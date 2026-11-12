@@ -390,7 +390,7 @@
   width: 100%;
 }
 
-
+/* Collection mode */
 .collection-mode-bar {
   display: flex;
   flex-wrap: wrap;
@@ -438,6 +438,7 @@
   cursor: not-allowed;
 }
 
+/* Collection shortage warning */
 .deck-grid-item.collection-shortage {
   border: 3px solid #e53935 !important;
   border-radius: 8px;
@@ -476,4 +477,156 @@
 
 .shortage-number {
   white-space: nowrap;
+}
+
+/* Format selection */
+.format-settings,
+.commander-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.format-settings select,
+.commander-settings select {
+  padding: 9px;
+  border-radius: 6px;
+  border: 1px solid #555;
+  background: #202020;
+  color: white;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.commander-settings {
+  padding: 12px;
+  border: 1px solid #555;
+  border-radius: 8px;
+}
+
+.commander-settings h3 {
+  margin: 0 0 8px;
+}
+
+/* Illegal and banned cards */
+.card-item.format-illegal,
+.deck-grid-item.format-illegal {
+  border: 3px solid #e53935 !important;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.format-card-warning {
+  background: #b71c1c;
+  color: white;
+  font-weight: 800;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.format-unknown {
+  font-size: 11px;
+  color: #e0b85a;
+}
+
+.format-warning-text {
+  color: #ff6666;
+}
+
+/* Deck validation summary */
+.deck-validation {
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: 7px;
+}
+
+.validation-valid {
+  border: 1px solid #388e3c;
+}
+
+.validation-invalid {
+  border: 1px solid #c62828;
+}
+
+.deck-validation ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.deck-validation li {
+  margin: 4px 0;
+  color: #ff7777;
+}
+
+/* Deck settings */
+.deck-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.deck-settings .format-settings {
+  margin-bottom: 0;
+}
+
+.deck-settings .collection-mode-bar {
+  margin-bottom: 0;
+}
+
+/* Deck format warning badge */
+.deck-grid-item {
+  position: relative;
+}
+
+.deck-format-warning {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 6;
+
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  padding: 7px 9px;
+  border-radius: 7px;
+
+  background: linear-gradient(135deg, #991b1b, #dc2626);
+  border: 1px solid #f87171;
+
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: 0.35px;
+
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
+  box-sizing: border-box;
+}
+
+.format-warning-icon {
+  flex-shrink: 0;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 20px;
+  height: 20px;
+
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.format-warning-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

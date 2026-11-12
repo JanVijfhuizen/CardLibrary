@@ -13,6 +13,19 @@ let activeController: AbortController | null = null;
 let requestId = 0;
 
 function parseCard(card: any): MtgCard {
+  const faces = Array.isArray(card.card_faces)
+    ? card.card_faces
+    : [];
+
+  const oracleText =
+    card.oracle_text ||
+    faces.map((face: any) => face.oracle_text || '').join('\n');
+
+  const image =
+    card.image_uris?.normal ||
+    faces.find((face: any) => face.image_uris?.normal)?.image_uris?.normal ||
+    '';
+
   return {
     id: card.id,
     name: card.name,
@@ -20,10 +33,10 @@ function parseCard(card: any): MtgCard {
     color: parseColor(card.colors),
     cost: Number(card.cmc ?? 0),
     tags: card.keywords || [],
-    image:
-      card.image_uris?.normal ||
-      card.card_faces?.[0]?.image_uris?.normal ||
-      ''
+    image,
+    colorIdentity: card.color_identity || [],
+    legalities: card.legalities || {},
+    oracleText
   };
 }
 
@@ -32,19 +45,7 @@ function parseColor(colors: string[] | undefined): string {
     return 'Colorless';
   }
 
-  if (colors.length > 1) {
-    return 'Multicolor';
-  }
-
-  const map: Record<string, string> = {
-    W: 'White',
-    U: 'Blue',
-    B: 'Black',
-    R: 'Red',
-    G: 'Green'
-  };
-
-  return map[colors[0]] || 'Colorless';
+  return colors.join('');
 }
 
 function buildQuery(filters?: CardFilters): string {
@@ -60,7 +61,6 @@ function buildQuery(filters?: CardFilters): string {
     parts.push(`name:"${escapedName}"`);
   }
 
-  // Exact color identity
   if (filters?.color) {
     if (filters.color === 'C') {
       parts.push('c:c');
@@ -69,12 +69,10 @@ function buildQuery(filters?: CardFilters): string {
     }
   }
 
-  // Card type
   if (filters?.type) {
     parts.push(`t:${filters.type.toLowerCase()}`);
   }
 
-  // Minimum mana value
   const minCost = Number(filters?.minCost);
 
   if (
@@ -86,13 +84,11 @@ function buildQuery(filters?: CardFilters): string {
     parts.push(`cmc>=${minCost}`);
   }
 
-  // Maximum mana value
   const maxCost = Number(filters?.maxCost);
 
   if (
     filters?.maxCost !== null &&
     filters?.maxCost !== undefined &&
-    filters?.maxCost !== '' as any &&
     Number.isFinite(maxCost) &&
     maxCost >= 0
   ) {
@@ -122,7 +118,7 @@ export function useScryfallAPI() {
       const query = buildQuery(filters);
 
       const url =
-  `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=name`;
+        `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=name`;
 
       const response = await fetch(url, {
         signal: controller.signal

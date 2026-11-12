@@ -379,3 +379,67 @@
     width: 100%;
   }
 }
+
+
+/* Deck format and legality status */
+.deck-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.deck-format-label {
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #303744;
+  border: 1px solid #465064;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.deck-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent;
+}
+
+.status-legal {
+  color: #86efac;
+  background: rgba(22, 101, 52, 0.3);
+  border-color: #16a34a;
+}
+
+.status-illegal {
+  color: #fecaca;
+  background: rgba(153, 27, 27, 0.35);
+  border-color: #dc2626;
+}
+
+.status-incomplete {
+  color: #fde68a;
+  background: rgba(146, 64, 14, 0.3);
+  border-color: #d97706;
+}
+
+.deck-validation-details {
+  margin-top: 9px;
+  color: #fca5a5;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.incomplete-details {
+  color: #fcd34d;
+}

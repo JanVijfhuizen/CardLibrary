@@ -1,3 +1,4 @@
+export type DeckFormat = 'standard' | 'commander' | 'any';
 
 export class MtgCard {
   id: string = '';
@@ -7,6 +8,12 @@ export class MtgCard {
   cost: number = 0;
   tags: string[] = [];
   image: string = '';
+
+  // Additional data used for format legality.
+  colorIdentity?: string[];
+  legalities?: Record<string, string>;
+  oracleText?: string;
+  keywords?: string[];
 }
 
 export class DeckEntry {
@@ -20,6 +27,9 @@ export class Deck {
   entries: DeckEntry[] = [];
   updatedAt: string = '';
   collectionOnly: boolean = false;
+
+  format: DeckFormat = 'standard';
+  commanderIds: string[] = [];
 }
 
 /**

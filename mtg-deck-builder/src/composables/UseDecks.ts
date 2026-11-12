@@ -1,6 +1,6 @@
 
 import { ref, computed } from 'vue';
-import type { Deck, MtgCard } from '../types/mtg';
+import type { Deck, MtgCard, DeckFormat } from '../types/mtg';
 import { StorageService } from '../services/Storage';
 
 const savedDecks = ref<Deck[]>([]);
@@ -8,25 +8,34 @@ const activeDeck = ref<Deck | null>(null);
 
 export function useDecks() {
   const loadSavedDecks = () => {
-    savedDecks.value = StorageService.getDecks();
+    savedDecks.value = StorageService.getDecks().map((deck) => ({
+      ...deck,
+      format: deck.format ?? 'standard',
+      collectionOnly: deck.collectionOnly ?? false,
+      commanderIds: deck.commanderIds ?? []
+    }));
   };
 
   const startNewDeck = (name = 'New MTG Deck') => {
     activeDeck.value = {
-        id: 'deck_' + Date.now(),
-        name,
-        entries: [],
-        updatedAt: new Date().toISOString(),
-        collectionOnly: false
+      id: 'deck_' + Date.now(),
+      name,
+      entries: [],
+      updatedAt: new Date().toISOString(),
+      collectionOnly: false,
+      format: 'standard',
+      commanderIds: []
     };
-    };
+  };
 
   const openDeck = (deck: Deck) => {
     activeDeck.value = {
-        ...JSON.parse(JSON.stringify(deck)),
-        collectionOnly: deck.collectionOnly ?? false
+      ...JSON.parse(JSON.stringify(deck)),
+      collectionOnly: deck.collectionOnly ?? false,
+      format: deck.format ?? 'standard',
+      commanderIds: deck.commanderIds ?? []
     };
-    };
+  };
 
   const closeDeck = () => {
     activeDeck.value = null;
@@ -42,11 +51,21 @@ export function useDecks() {
     );
   });
 
-  const isDeckValid = computed(() => totalCardCount.value >= 60);
+  const isDeckValid = computed(() => {
+    if (!activeDeck.value) return false;
 
-  // -----------------------------
+    if (activeDeck.value.format === 'any') {
+        return true;
+    }
+
+    if (activeDeck.value.format === 'commander') {
+        return totalCardCount.value === 100;
+    }
+
+    return totalCardCount.value >= 60;
+    });
+
   // Collection calculations
-  // -----------------------------
 
   const getOwnedQuantity = (cardId: string): number => {
     return StorageService.getCollectionQuantity(cardId);
@@ -90,7 +109,10 @@ export function useDecks() {
     return Math.max(0, getOwnedQuantity(cardId) - allocated);
   };
 
-  const canAddCardFromCollection = (card: MtgCard): boolean => {
+  const canAddCardFromCollection = (
+    card: MtgCard,
+    copyLimit = 4
+  ): boolean => {
     if (!activeDeck.value) return false;
 
     const existing = activeDeck.value.entries.find(
@@ -100,18 +122,17 @@ export function useDecks() {
     const currentQuantity = existing?.quantity ?? 0;
 
     return (
-      currentQuantity < 4 &&
+      currentQuantity < copyLimit &&
       currentQuantity < getAvailableQuantityForActiveDeck(card.id)
     );
   };
 
-  // -----------------------------
   // Deck editing
-  // -----------------------------
 
   const addCard = (
     card: MtgCard,
-    collectionOnly = false
+    collectionOnly = false,
+    copyLimit = 4
   ): { success: boolean; message?: string } => {
     if (!activeDeck.value) {
       return { success: false };
@@ -123,10 +144,10 @@ export function useDecks() {
 
     const currentQuantity = existing?.quantity ?? 0;
 
-    if (currentQuantity >= 4) {
+    if (currentQuantity >= copyLimit) {
       return {
         success: false,
-        message: `Maximum 4 copies of "${card.name}" allowed.`
+        message: `Maximum ${copyLimit} copies of "${card.name}" allowed in this format.`
       };
     }
 
@@ -176,6 +197,9 @@ export function useDecks() {
     }
 
     activeDeck.value.collectionOnly ??= false;
+    activeDeck.value.format ??= 'standard';
+    activeDeck.value.commanderIds ??= [];
+
     StorageService.saveDeck(activeDeck.value);
     loadSavedDecks();
   };
@@ -190,6 +214,7 @@ export function useDecks() {
 
     const header =
       `${activeDeck.value.name} (${totalCardCount.value} cards)\n` +
+      `Format: ${activeDeck.value.format}\n` +
       '-----------------------------------';
 
     const lines = activeDeck.value.entries.map(
