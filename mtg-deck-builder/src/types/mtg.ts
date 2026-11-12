@@ -19,6 +19,16 @@ export class Deck {
   name: string = '';
   entries: DeckEntry[] = [];
   updatedAt: string = '';
+  collectionOnly: boolean = false;
+}
+
+/**
+ * A physical card in the user's collection.
+ * This is independent of any deck.
+ */
+export class CollectionEntry {
+  card: MtgCard = new MtgCard();
+  quantity: number = 1;
 }
 
 export class CardFilters {

@@ -1,9 +1,10 @@
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { useDecks } from '../composables/UseDecks';
 import { useScryfallAPI } from '../services/Scryfall';
-import type { CardFilters, MtgCard } from '../types/mtg';
+import { StorageService } from '../services/Storage';
+import type { CardFilters, MtgCard, CollectionEntry, DeckEntry } from '../types/mtg';
 
 const {
   activeDeck,
@@ -13,7 +14,9 @@ const {
   addCard,
   removeCard,
   saveActiveDeck,
-  getShareableDecklist
+  getShareableDecklist,
+  getAvailableQuantityForActiveDeck,
+  canAddCardFromCollection
 } = useDecks();
 
 const {
@@ -34,7 +37,116 @@ const filters = ref<CardFilters>({
   maxCost: null
 });
 
-// Notification state
+// Collection-only mode belongs to the active deck.
+const collectionOnly = computed({
+  get: () => activeDeck.value?.collectionOnly ?? false,
+  set: (value: boolean) => {
+    if (activeDeck.value) {
+      activeDeck.value.collectionOnly = value;
+    }
+  }
+});
+
+const collectionEntries = ref<CollectionEntry[]>([]);
+
+const loadCollection = () => {
+  collectionEntries.value = StorageService.getCollection();
+};
+
+watch(collectionOnly, (enabled) => {
+  if (enabled) {
+    loadCollection();
+  }
+});
+
+// Calculate how many copies an existing deck entry exceeds availability by.
+const getDeckEntryShortage = (entry: DeckEntry): number => {
+  const available = getAvailableQuantityForActiveDeck(entry.card.id);
+  return Math.max(0, entry.quantity - available);
+};
+
+const normalizeColor = (color: string): string => {
+  const value = (color || '').toLowerCase();
+
+  const letters = value
+    .replace(/white/g, 'W')
+    .replace(/blue/g, 'U')
+    .replace(/black/g, 'B')
+    .replace(/red/g, 'R')
+    .replace(/green/g, 'G')
+    .toUpperCase()
+    .replace(/[^WUBRG]/g, '');
+
+  return [...new Set(letters)].sort().join('');
+};
+
+const matchesLocalFilters = (card: MtgCard): boolean => {
+  const query = filters.value.query.trim().toLowerCase();
+
+  if (query && !card.name.toLowerCase().includes(query)) {
+    return false;
+  }
+
+  if (filters.value.color) {
+    const cardColor = normalizeColor(card.color);
+
+    if (filters.value.color === 'C') {
+      if (cardColor !== '') return false;
+    } else {
+      const selectedColor = [...filters.value.color].sort().join('');
+
+      if (cardColor !== selectedColor) return false;
+    }
+  }
+
+  if (
+    filters.value.type &&
+    !card.type.toLowerCase().includes(filters.value.type.toLowerCase())
+  ) {
+    return false;
+  }
+
+  if (
+    filters.value.minCost !== null &&
+    card.cost < filters.value.minCost
+  ) {
+    return false;
+  }
+
+  if (
+    filters.value.maxCost !== null &&
+    card.cost > filters.value.maxCost
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const displayedCards = computed(() => {
+  if (!collectionOnly.value) {
+    return cards.value;
+  }
+
+  return collectionEntries.value
+    .filter((entry) => {
+      const card = entry.card;
+
+      const alreadyInDeck = activeDeck.value?.entries.some(
+        (deckEntry) => deckEntry.card.id === card.id
+      ) ?? false;
+
+      const available = getAvailableQuantityForActiveDeck(card.id);
+
+      return (
+        (available > 0 || alreadyInDeck) &&
+        matchesLocalFilters(card)
+      );
+    })
+    .map((entry) => entry.card);
+});
+
+// Notification state.
 const notification = ref({
   message: '',
   type: 'success' as 'success' | 'error'
@@ -57,7 +169,6 @@ const showNotification = (
   }, 3000);
 };
 
-// Clear all search filters
 const clearFilters = () => {
   filters.value = {
     query: '',
@@ -68,19 +179,25 @@ const clearFilters = () => {
   };
 };
 
-// Search debounce
 let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
 onMounted(async () => {
-  await searchCards(filters.value);
+  loadCollection();
+
+  if (!collectionOnly.value) {
+    await searchCards(filters.value);
+  }
 });
 
-// Search whenever filters change
 watch(
   filters,
   (newFilters) => {
     if (searchTimeout) {
       clearTimeout(searchTimeout);
+    }
+
+    if (collectionOnly.value) {
+      return;
     }
 
     searchTimeout = setTimeout(() => {
@@ -90,22 +207,24 @@ watch(
   { deep: true }
 );
 
-// Add card to deck
 const handleAdd = (card: MtgCard) => {
-  const result = addCard(card);
+  const result = addCard(card, collectionOnly.value);
 
   if (!result.success && result.message) {
     showNotification(result.message, 'error');
   }
 };
 
-// Save deck without leaving the builder
+const getCardInventoryText = (card: MtgCard): string => {
+  const available = getAvailableQuantityForActiveDeck(card.id);
+  return `Available: ${available}`;
+};
+
 const handleSave = () => {
   saveActiveDeck();
   showNotification('Deck saved successfully!');
 };
 
-// Copy decklist
 const handleShare = async () => {
   const decklistText = getShareableDecklist();
 
@@ -120,12 +239,10 @@ const handleShare = async () => {
   }
 };
 
-// Load next page of cards
 const handleLoadMore = async () => {
   await loadMore();
 };
 
-// Clean up timers
 onUnmounted(() => {
   if (searchTimeout) {
     clearTimeout(searchTimeout);
@@ -199,16 +316,30 @@ onUnmounted(() => {
       <!-- Left: Card Catalog Browser -->
       <div class="pane card-browser">
 
+        <!-- Collection-only Deck Setting -->
+        <div class="collection-mode-bar">
+          <label>
+            <input
+              type="checkbox"
+              v-model="collectionOnly"
+            />
+            Use collection only for this deck
+          </label>
+
+          <span v-if="collectionOnly">
+            Only cards in your collection with available copies are shown.
+          </span>
+        </div>
+
         <!-- Search Filters -->
         <div class="filter-bar">
 
           <input
             type="text"
             v-model="filters.query"
-            placeholder="Search any MTG card (e.g. Mikaeus, Sol Ring)..."
+            placeholder="Search any MTG card (e.g. Protean Hulk, Sol Ring)..."
           />
 
-          <!-- Color Filter -->
           <select v-model="filters.color">
             <option value="">All Colors</option>
 
@@ -245,7 +376,7 @@ onUnmounted(() => {
               <option value="GWU">Bant (Green/White/Blue)</option>
               <option value="WBG">Abzan (White/Black/Green)</option>
               <option value="URW">Jeskai (Blue/Red/White)</option>
-              <option value="BGR">Sultai (Black/Green/Blue)</option>
+              <option value="BGR">Sultai (Blue/Black/Green)</option>
               <option value="RWB">Mardu (Red/White/Black)</option>
               <option value="GUW">Temur (Green/Blue/Red)</option>
             </optgroup>
@@ -263,7 +394,6 @@ onUnmounted(() => {
             </optgroup>
           </select>
 
-          <!-- Card Type Filter -->
           <select v-model="filters.type">
             <option value="">All Types</option>
             <option value="Creature">Creature</option>
@@ -275,7 +405,6 @@ onUnmounted(() => {
             <option value="Land">Land</option>
           </select>
 
-          <!-- Mana Value Filters -->
           <div class="mana-cost-filter">
             <label>
               Min MV
@@ -301,7 +430,6 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <!-- Clear Filters Button -->
           <button
             type="button"
             class="secondary-btn clear-filters-btn"
@@ -309,17 +437,19 @@ onUnmounted(() => {
           >
             Clear Filters
           </button>
-
         </div>
 
         <!-- Initial Loading -->
-        <div v-if="isLoading" class="loading-state">
+        <div
+          v-if="!collectionOnly && isLoading"
+          class="loading-state"
+        >
           Loading cards from Scryfall...
         </div>
 
         <!-- Initial Search Error -->
         <div
-          v-else-if="error && cards.length === 0"
+          v-else-if="!collectionOnly && error && cards.length === 0"
           class="error-state"
         >
           {{ error }}
@@ -327,10 +457,14 @@ onUnmounted(() => {
 
         <!-- Empty Results -->
         <div
-          v-else-if="cards.length === 0"
+          v-else-if="displayedCards.length === 0"
           class="loading-state"
         >
-          No cards found. Check your spelling or clear your filters.
+          {{
+            collectionOnly
+              ? 'No available cards in your collection match these filters.'
+              : 'No cards found. Check your spelling or clear your filters.'
+          }}
         </div>
 
         <!-- Card Results -->
@@ -338,7 +472,7 @@ onUnmounted(() => {
 
           <div class="catalog-grid">
             <div
-              v-for="card in cards"
+              v-for="card in displayedCards"
               :key="card.id"
               class="card-item"
             >
@@ -356,24 +490,38 @@ onUnmounted(() => {
                   {{ card.name }}
                 </span>
 
+                <span class="inventory-count">
+                  {{ getCardInventoryText(card) }}
+                </span>
+
                 <button
                   @click="handleAdd(card)"
                   class="primary-btn add-btn"
+                  :disabled="
+                    collectionOnly &&
+                    !canAddCardFromCollection(card)
+                  "
                 >
-                  + Add
+                  {{
+                    collectionOnly &&
+                    !canAddCardFromCollection(card)
+                      ? 'Unavailable'
+                      : '+ Add'
+                  }}
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- Pagination Error -->
-          <p v-if="error" class="error-state">
+          <p
+            v-if="!collectionOnly && error"
+            class="error-state"
+          >
             {{ error }}
           </p>
 
-          <!-- Load More -->
           <button
-            v-if="hasMore"
+            v-if="!collectionOnly && hasMore"
             @click="handleLoadMore"
             :disabled="isLoadingMore"
             class="secondary-btn load-more-btn"
@@ -385,11 +533,12 @@ onUnmounted(() => {
             }}
           </button>
 
-          <!-- End of Results -->
-          <p v-else class="catalog-end">
+          <p
+            v-if="!collectionOnly && !hasMore"
+            class="catalog-end"
+          >
             All matching cards have been loaded.
           </p>
-
         </div>
       </div>
 
@@ -410,11 +559,28 @@ onUnmounted(() => {
             v-for="entry in activeDeck?.entries"
             :key="entry.card.id"
             class="deck-grid-item"
+            :class="{
+              'collection-shortage':
+                collectionOnly && getDeckEntryShortage(entry) > 0
+            }"
           >
             <img
               :src="entry.card.image"
               :alt="entry.card.name"
             />
+
+            <!-- Shortage Warning -->
+            <div
+              v-if="collectionOnly && getDeckEntryShortage(entry) > 0"
+              class="collection-shortage-warning"
+              role="status"
+              :title="`You need ${getDeckEntryShortage(entry)} more ${entry.card.name} to cover this deck entry.`"
+            >
+              <span class="shortage-exclamation">!</span>
+              <span class="shortage-number">
+                −{{ getDeckEntryShortage(entry) }}
+              </span>
+            </div>
 
             <div class="deck-item-controls">
               <span>
@@ -426,7 +592,19 @@ onUnmounted(() => {
                   -
                 </button>
 
-                <button @click="handleAdd(entry.card)">
+                <button
+                  @click="handleAdd(entry.card)"
+                  :disabled="
+                    collectionOnly &&
+                    !canAddCardFromCollection(entry.card)
+                  "
+                  :title="
+                    collectionOnly &&
+                    !canAddCardFromCollection(entry.card)
+                      ? 'No more copies available in your collection'
+                      : 'Add one copy'
+                  "
+                >
                   +
                 </button>
               </div>
@@ -435,7 +613,6 @@ onUnmounted(() => {
 
         </div>
       </div>
-
     </div>
   </div>
 </template>

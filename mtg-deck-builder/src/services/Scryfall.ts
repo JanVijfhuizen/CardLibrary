@@ -122,7 +122,7 @@ export function useScryfallAPI() {
       const query = buildQuery(filters);
 
       const url =
-        `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=name`;
+  `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=name`;
 
       const response = await fetch(url, {
         signal: controller.signal
