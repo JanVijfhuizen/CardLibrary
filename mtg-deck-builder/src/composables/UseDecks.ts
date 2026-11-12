@@ -10,6 +10,7 @@ const activeDeck = ref<Deck | null>(null);
 function normalizeDeck(deck: Deck): Deck {
   const normalized: Deck = {
     ...deck,
+    entries: Array.isArray(deck.entries) ? [...deck.entries] : [],
     format: deck.format ?? 'any',
     collectionOnly: deck.collectionOnly ?? false,
     commanderIds: deck.commanderIds ?? [],
@@ -36,6 +37,43 @@ function normalizeDeck(deck: Deck): Deck {
 export function useDecks() {
   const loadSavedDecks = () => {
     savedDecks.value = StorageService.getDecks().map(normalizeDeck);
+  };
+
+  const replaceActiveDeckEntries = (
+    entries: { card: MtgCard; quantity: number }[],
+    commanderNames: string[] = [],
+    companionName: string | null = null
+  ) => {
+    if (!activeDeck.value) return;
+
+    const deck = activeDeck.value;
+
+    deck.entries = entries.map(entry => ({
+      card: { ...entry.card },
+      quantity: entry.quantity
+    }));
+
+    deck.commanderIds = commanderNames
+      .map(name =>
+        deck.entries.find(
+          entry =>
+            entry.card.name.toLowerCase() === name.toLowerCase()
+        )?.card.id
+      )
+      .filter((id): id is string => Boolean(id));
+
+    deck.companionCard = companionName
+      ? (() => {
+          const entry = deck.entries.find(
+            item =>
+              item.card.name.toLowerCase() === companionName.toLowerCase()
+          );
+
+          return entry ? { ...entry.card } : undefined;
+        })()
+      : undefined;
+
+    deck.updatedAt = new Date().toISOString();
   };
 
   const startNewDeck = (name = 'New MTG Deck') => {
@@ -85,17 +123,17 @@ export function useDecks() {
   const getAllocatedQuantity = (
     cardId: string,
     excludeDeckId?: string
-    ): number => {
+  ): number => {
     return savedDecks.value.reduce((total, deck) => {
-        if (deck.id === excludeDeckId) return total;
+      if (deck.id === excludeDeckId) return total;
 
-        const entry = deck.entries.find(
+      const entry = deck.entries.find(
         item => item.card.id === cardId
-        );
+      );
 
-        return total + (entry?.quantity ?? 0);
+      return total + (entry?.quantity ?? 0);
     }, 0);
-    };
+  };
 
   const getAvailableQuantity = (cardId: string): number =>
     Math.max(
@@ -200,37 +238,45 @@ export function useDecks() {
     } else {
       activeDeck.value.entries.splice(index, 1);
     }
+
+    if (
+      activeDeck.value.companionCard?.id === cardId &&
+      !activeDeck.value.entries.some(
+        entry => entry.card.id === cardId
+      )
+    ) {
+      activeDeck.value.companionCard = undefined;
+    }
   };
 
-  const setCompanion = (card: MtgCard): {
-  success: boolean;
-  message?: string;
-    } => {
+  const setCompanion = (
+    card: MtgCard
+  ): { success: boolean; message?: string } => {
     if (!activeDeck.value) {
-        return { success: false, message: 'No active deck.' };
+      return { success: false, message: 'No active deck.' };
     }
 
     const entry = activeDeck.value.entries.find(
-        item => item.card.id === card.id
+      item => item.card.id === card.id
     );
 
     if (!entry) {
-        return {
+      return {
         success: false,
         message: 'Add the companion card to the deck before selecting it.'
-        };
+      };
     }
 
     activeDeck.value.companionCard = { ...entry.card };
 
     return { success: true };
-    };
+  };
 
   const clearCompanion = () => {
     if (!activeDeck.value) return;
 
     activeDeck.value.companionCard = undefined;
-    };
+  };
 
   const saveActiveDeck = () => {
     if (!activeDeck.value) return;
@@ -262,24 +308,26 @@ export function useDecks() {
 
     const deck = activeDeck.value;
 
-    const header =
-      `${deck.name} (${totalCardCount.value} cards)\n` +
-      `Format: ${deck.format}\n` +
-      '-----------------------------------';
+    const lines: string[] = [
+      `${deck.name} (${totalCardCount.value} cards)`,
+      `Format: ${deck.format}`,
+      '-----------------------------------'
+    ];
 
-    const lines = deck.entries.map(entry => {
-  const quantity =
-    entry.card.id === deck.companionCard?.id
-      ? entry.quantity - 1
-      : entry.quantity;
+    if (deck.commanderIds.length > 0) {
+      for (const commanderId of deck.commanderIds) {
+        const commander = deck.entries.find(
+          entry => entry.card.id === commanderId
+        );
 
-  return quantity > 0
-    ? `${quantity}x ${entry.card.name}`
-    : null;
-}).filter((line): line is string => line !== null);
+        if (commander) {
+          lines.push(`Commander: ${commander.card.name}`);
+        }
+      }
+    }
 
     if (deck.companionCard) {
-      lines.unshift(`Companion: ${deck.companionCard.name}`);
+      lines.push(`Companion: ${deck.companionCard.name}`);
     }
 
     if (deck.format === 'oathbreaker') {
@@ -291,14 +339,37 @@ export function useDecks() {
         entry => entry.card.id === deck.signatureSpellId
       );
 
-      lines.unshift(
-        `Oathbreaker: ${oathbreaker?.card.name ?? 'Not selected'}`,
-        `Signature Spell: ${signatureSpell?.card.name ?? 'Not selected'}`,
-        '-----------------------------------'
-      );
+      if (oathbreaker) {
+        lines.push(`Oathbreaker: ${oathbreaker.card.name}`);
+      }
+
+      if (signatureSpell) {
+        lines.push(`Signature Spell: ${signatureSpell.card.name}`);
+      }
     }
 
-    return [header, ...lines].join('\n');
+    lines.push('-----------------------------------');
+
+    const excludedIds = new Set<string>([
+      ...deck.commanderIds,
+      ...(deck.companionCard ? [deck.companionCard.id] : []),
+      ...(deck.oathbreakerId ? [deck.oathbreakerId] : []),
+      ...(deck.signatureSpellId ? [deck.signatureSpellId] : [])
+    ]);
+
+    for (const entry of deck.entries) {
+      let quantity = entry.quantity;
+
+      if (excludedIds.has(entry.card.id)) {
+        quantity -= 1;
+      }
+
+      if (quantity > 0) {
+        lines.push(`${quantity}x ${entry.card.name}`);
+      }
+    }
+
+    return lines.join('\n');
   };
 
   return {
@@ -314,6 +385,7 @@ export function useDecks() {
     removeCard,
     setCompanion,
     clearCompanion,
+    replaceActiveDeckEntries,
     saveActiveDeck,
     deleteDeck,
     getOwnedQuantity,

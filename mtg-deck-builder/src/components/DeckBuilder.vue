@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { useDecks } from '../composables/UseDecks';
-import { useScryfallAPI } from '../services/Scryfall';
+import { useScryfallAPI, resolveDecklist } from '../services/Scryfall';
 import { StorageService } from '../services/Storage';
 import type {
   CardFilters,
@@ -29,7 +29,8 @@ const {
   getAvailableQuantityForActiveDeck,
   canAddCardFromCollection,
   setCompanion,
-  clearCompanion
+  clearCompanion,
+  replaceActiveDeckEntries
 } = useDecks();
 
 const {
@@ -967,6 +968,72 @@ const selectFormat = (format: DeckFormat) => {
   activeDeck.value.format = format;
   formatDropdownOpen.value = false;
 };
+
+
+const showImportDialog = ref(false);
+const importText = ref('');
+const isImporting = ref(false);
+const importError = ref('');
+
+const importPreview = ref<{
+  entries: { card: MtgCard; quantity: number }[];
+  commanderNames: string[];
+  companionName: string | null;
+  notFound: string[];
+} | null>(null);
+
+const handleResolveDecklist = async () => {
+  if (!importText.value.trim()) {
+    importError.value = 'Paste a decklist first.';
+    return;
+  }
+
+  isImporting.value = true;
+  importError.value = '';
+  importPreview.value = null;
+
+  try {
+    const result = await resolveDecklist(importText.value);
+
+    if (result.entries.length === 0) {
+      importError.value = 'No cards could be resolved from this decklist.';
+      return;
+    }
+
+    importPreview.value = result;
+  } catch (err) {
+    importError.value =
+      err instanceof Error
+        ? err.message
+        : 'Could not resolve this decklist.';
+  } finally {
+    isImporting.value = false;
+  }
+};
+
+const handleConfirmImport = () => {
+  if (!importPreview.value || !activeDeck.value) return;
+
+  replaceActiveDeckEntries(
+    importPreview.value.entries,
+    importPreview.value.commanderNames,
+    importPreview.value.companionName
+  );
+
+  showImportDialog.value = false;
+  importText.value = '';
+  importPreview.value = null;
+  importError.value = '';
+
+  showNotification('Decklist imported successfully!');
+};
+
+const handleCancelImport = () => {
+  showImportDialog.value = false;
+  importPreview.value = null;
+  importError.value = '';
+};
+
 </script>
 
 <template>
@@ -1017,6 +1084,14 @@ const selectFormat = (format: DeckFormat) => {
       <div class="builder-actions">
         <button @click="handleShare" class="secondary-btn">
           Share Decklist
+        </button>
+
+        <button
+        type="button"
+        class="secondary-btn"
+        @click="showImportDialog = true"
+        >
+        Import Decklist
         </button>
 
         <button @click="handleSave" class="primary-btn">
@@ -1690,6 +1765,113 @@ const selectFormat = (format: DeckFormat) => {
         </div>
       </div>
     </div>
+    <!-- Import Decklist Dialog -->
+<div
+  v-if="showImportDialog"
+  class="import-dialog-backdrop"
+  @click.self="handleCancelImport"
+>
+  <div class="import-dialog">
+    <div class="import-dialog-header">
+      <h2>Import Decklist</h2>
+
+      <button
+        type="button"
+        class="secondary-btn"
+        @click="handleCancelImport"
+      >
+        ✕
+      </button>
+    </div>
+
+    <p>
+      Paste a decklist below. Card names and quantities will be resolved
+      through Scryfall.
+    </p>
+
+    <textarea
+      v-model="importText"
+      class="import-decklist-input"
+      placeholder="4 Lightning Bolt&#10;4 Mountain&#10;1 Sol Ring&#10;Commander: Atraxa, Praetors' Voice"
+      rows="12"
+      :disabled="isImporting"
+    ></textarea>
+
+    <p v-if="importError" class="import-error">
+      {{ importError }}
+    </p>
+
+    <button
+      v-if="!importPreview"
+      type="button"
+      class="primary-btn"
+      :disabled="isImporting || !importText.trim()"
+      @click="handleResolveDecklist"
+    >
+      {{ isImporting ? 'Resolving cards...' : 'Resolve Decklist' }}
+    </button>
+
+    <div v-if="importPreview" class="import-preview">
+      <h3>Import Preview</h3>
+
+      <p>
+        {{ importPreview.entries.reduce((sum, entry) => sum + entry.quantity, 0) }}
+        cards across {{ importPreview.entries.length }} unique cards.
+      </p>
+
+      <p v-if="importPreview.commanderNames.length">
+        <strong>Commander:</strong>
+        {{ importPreview.commanderNames.join(' + ') }}
+      </p>
+
+      <p v-if="importPreview.companionName">
+        <strong>Companion:</strong>
+        {{ importPreview.companionName }}
+      </p>
+
+      <div class="import-preview-list">
+        <div
+          v-for="entry in importPreview.entries"
+          :key="entry.card.id"
+          class="import-preview-entry"
+        >
+          <span>{{ entry.card.name }}</span>
+          <strong>{{ entry.quantity }}x</strong>
+        </div>
+      </div>
+
+      <div v-if="importPreview.notFound.length" class="import-not-found">
+        <strong>
+          {{ importPreview.notFound.length }} card names not found:
+        </strong>
+
+        <ul>
+          <li v-for="name in importPreview.notFound" :key="name">
+            {{ name }}
+          </li>
+        </ul>
+      </div>
+
+      <div class="import-dialog-actions">
+        <button
+          type="button"
+          class="secondary-btn"
+          @click="importPreview = null"
+        >
+          Edit List
+        </button>
+
+        <button
+          type="button"
+          class="primary-btn"
+          @click="handleConfirmImport"
+        >
+          Replace Current Deck
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
   </div>
 </template>
 

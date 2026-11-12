@@ -12,7 +12,6 @@ let nextPageUrl: string | null = null;
 let activeController: AbortController | null = null;
 let requestId = 0;
 
-
 function parseCard(card: any): MtgCard {
   const faces = Array.isArray(card.card_faces) ? card.card_faces : [];
 
@@ -41,16 +40,12 @@ function parseCard(card: any): MtgCard {
 }
 
 function parseColor(colors: string[] | undefined): string {
-  if (!colors || colors.length === 0) {
-    return 'Colorless';
-  }
-
+  if (!colors || colors.length === 0) return 'Colorless';
   return colors.join('');
 }
 
 function buildQuery(filters?: CardFilters): string {
   const parts = ['game:paper'];
-
   const searchTerm = filters?.query?.trim();
 
   if (searchTerm) {
@@ -62,11 +57,11 @@ function buildQuery(filters?: CardFilters): string {
   }
 
   if (filters?.color) {
-    if (filters.color === 'C') {
-      parts.push('c:c');
-    } else {
-      parts.push(`c=${filters.color.toLowerCase()}`);
-    }
+    parts.push(
+      filters.color === 'C'
+        ? 'c:c'
+        : `c=${filters.color.toLowerCase()}`
+    );
   }
 
   if (filters?.type) {
@@ -98,6 +93,156 @@ function buildQuery(filters?: CardFilters): string {
   return parts.join(' ');
 }
 
+export interface ResolvedDecklistEntry {
+  card: MtgCard;
+  quantity: number;
+}
+
+export interface DecklistResolution {
+  entries: ResolvedDecklistEntry[];
+  commanderNames: string[];
+  companionName: string | null;
+  notFound: string[];
+}
+
+interface ParsedDecklistLine {
+  name: string;
+  quantity: number;
+  role: 'main' | 'commander' | 'companion';
+}
+
+function parseDecklist(text: string): ParsedDecklistLine[] {
+  const result: ParsedDecklistLine[] = [];
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    let line = rawLine.trim();
+
+    if (!line || line.startsWith('//') || line.startsWith('#')) {
+      continue;
+    }
+
+    const lower = line.toLowerCase();
+
+    if (
+      ['deck', 'mainboard', 'sideboard', 'creatures',
+       'instants', 'sorceries', 'artifacts', 'enchantments',
+       'lands', 'planeswalkers'].includes(lower.replace(/:$/, ''))
+    ) {
+      continue;
+    }
+
+    let role: ParsedDecklistLine['role'] = 'main';
+
+    if (/^commander\s*:/i.test(line)) {
+      role = 'commander';
+      line = line.replace(/^commander\s*:\s*/i, '');
+    } else if (/^companion\s*:/i.test(line)) {
+      role = 'companion';
+      line = line.replace(/^companion\s*:\s*/i, '');
+    }
+
+    let quantity = 1;
+
+    const quantityMatch = line.match(/^(\d+)\s*x?\s+(.+)$/i);
+
+    if (quantityMatch) {
+      quantity = Number(quantityMatch[1]);
+      line = quantityMatch[2].trim();
+    }
+
+    if (quantity <= 0 || !Number.isInteger(quantity)) continue;
+
+    // Remove common set-code and collector-number suffixes.
+    line = line.replace(/\s+\([A-Z0-9]+\)\s+\S+$/, '').trim();
+
+    if (!line) continue;
+
+    result.push({ name: line, quantity, role });
+  }
+
+  return result;
+}
+
+export async function resolveDecklist(
+  text: string
+): Promise<DecklistResolution> {
+  const parsed = parseDecklist(text);
+
+  const uniqueNames = [
+    ...new Set(parsed.map((line) => line.name))
+  ];
+
+  const resolvedCards = new Map<string, MtgCard>();
+  const notFound: string[] = [];
+
+  for (let i = 0; i < uniqueNames.length; i += 75) {
+    const batch = uniqueNames.slice(i, i + 75);
+
+    const response = await fetch(
+      'https://api.scryfall.com/cards/collection',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          identifiers: batch.map((name) => ({ name }))
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Scryfall API error (${response.status})`);
+    }
+
+    const data = await response.json();
+
+    for (const card of data.data ?? []) {
+      resolvedCards.set(card.name.toLowerCase(), parseCard(card));
+    }
+
+    for (const missing of data.not_found ?? []) {
+      if (missing.name) notFound.push(missing.name);
+    }
+  }
+
+  const entries: ResolvedDecklistEntry[] = [];
+  const commanderNames: string[] = [];
+  let companionName: string | null = null;
+
+  for (const line of parsed) {
+    const card = resolvedCards.get(line.name.toLowerCase());
+
+    if (!card) continue;
+
+    if (line.role === 'commander') {
+      commanderNames.push(card.name);
+    } else if (line.role === 'companion') {
+      companionName = card.name;
+    }
+
+    const existing = entries.find(
+      (entry) => entry.card.id === card.id
+    );
+
+    if (existing) {
+      existing.quantity += line.quantity;
+    } else {
+      entries.push({
+        card,
+        quantity: line.quantity
+      });
+    }
+  }
+
+  return {
+    entries,
+    commanderNames,
+    companionName,
+    notFound
+  };
+}
+
 export function useScryfallAPI() {
   const searchCards = async (filters?: CardFilters) => {
     activeController?.abort();
@@ -116,8 +261,7 @@ export function useScryfallAPI() {
 
     try {
       const query = buildQuery(filters);
-
-        const url =
+      const url =
         `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=name`;
 
       const response = await fetch(url, {
@@ -126,12 +270,7 @@ export function useScryfallAPI() {
 
       if (currentRequest !== requestId) return;
 
-      if (response.status === 404) {
-        cards.value = [];
-        hasMore.value = false;
-        nextPageUrl = null;
-        return;
-      }
+      if (response.status === 404) return;
 
       if (!response.ok) {
         throw new Error(`Scryfall API error (${response.status})`);
@@ -142,18 +281,13 @@ export function useScryfallAPI() {
       if (currentRequest !== requestId) return;
 
       cards.value = Array.isArray(data.data)
-        ? data.data
-            .map(parseCard)
-            .filter((card: MtgCard) => card.image)
+        ? data.data.map(parseCard).filter((card: MtgCard) => card.image)
         : [];
 
       hasMore.value = Boolean(data.has_more);
       nextPageUrl = data.next_page || null;
-
     } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        return;
-      }
+      if (err instanceof Error && err.name === 'AbortError') return;
 
       if (currentRequest === requestId) {
         error.value =
@@ -163,7 +297,6 @@ export function useScryfallAPI() {
 
         console.error('Scryfall search failed:', err);
       }
-
     } finally {
       if (currentRequest === requestId) {
         isLoading.value = false;
@@ -172,13 +305,7 @@ export function useScryfallAPI() {
   };
 
   const loadMore = async () => {
-    if (
-      !nextPageUrl ||
-      isLoading.value ||
-      isLoadingMore.value
-    ) {
-      return;
-    }
+    if (!nextPageUrl || isLoading.value || isLoadingMore.value) return;
 
     const controller = new AbortController();
 
@@ -204,14 +331,10 @@ export function useScryfallAPI() {
       if (currentRequest !== requestId) return;
 
       const newCards: MtgCard[] = Array.isArray(data.data)
-        ? data.data
-            .map(parseCard)
-            .filter((card: MtgCard) => card.image)
+        ? data.data.map(parseCard).filter((card: MtgCard) => card.image)
         : [];
 
-      const existingIds = new Set(
-        cards.value.map(card => card.id)
-      );
+      const existingIds = new Set(cards.value.map(card => card.id));
 
       cards.value.push(
         ...newCards.filter(card => !existingIds.has(card.id))
@@ -219,11 +342,8 @@ export function useScryfallAPI() {
 
       hasMore.value = Boolean(data.has_more);
       nextPageUrl = data.next_page || null;
-
     } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        return;
-      }
+      if (err instanceof Error && err.name === 'AbortError') return;
 
       if (currentRequest === requestId) {
         error.value =
@@ -233,7 +353,6 @@ export function useScryfallAPI() {
 
         console.error('Failed to load more cards:', err);
       }
-
     } finally {
       if (currentRequest === requestId) {
         isLoadingMore.value = false;
