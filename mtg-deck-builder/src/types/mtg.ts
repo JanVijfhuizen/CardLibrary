@@ -1,4 +1,31 @@
-export type DeckFormat = 'standard' | 'commander' | 'any';
+export const SCRYFALL_FORMATS = [
+  'standard',
+  'future',
+  'historic',
+  'timeless',
+  'gladiator',
+  'pioneer',
+  'explorer',
+  'modern',
+  'legacy',
+  'pauper',
+  'vintage',
+  'penny',
+  'commander',
+  'duel',
+  'brawl',
+  'historicbrawl',
+  'standardbrawl',
+  'alchemy',
+  'oathbreaker',
+  'paupercommander',
+  'oldschool',
+  'premodern',
+  'predh'
+] as const;
+
+export type ScryfallFormat = typeof SCRYFALL_FORMATS[number];
+export type DeckFormat = ScryfallFormat | 'any';
 
 export class MtgCard {
   id: string = '';
@@ -9,11 +36,11 @@ export class MtgCard {
   tags: string[] = [];
   image: string = '';
 
-  // Additional data used for format legality.
   colorIdentity?: string[];
   legalities?: Record<string, string>;
   oracleText?: string;
   keywords?: string[];
+  rarity?: string;
 }
 
 export class DeckEntry {
@@ -30,12 +57,14 @@ export class Deck {
 
   format: DeckFormat = 'standard';
   commanderIds: string[] = [];
+
+  // Used by Oathbreaker.
+  oathbreakerId?: string;
+  signatureSpellId?: string;  
+  // Used by Companion.
+  companionCard?: MtgCard;
 }
 
-/**
- * A physical card in the user's collection.
- * This is independent of any deck.
- */
 export class CollectionEntry {
   card: MtgCard = new MtgCard();
   quantity: number = 1;

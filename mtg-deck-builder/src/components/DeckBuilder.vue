@@ -11,6 +11,12 @@ import type {
   DeckEntry,
   DeckFormat
 } from '../types/mtg';
+import {
+  FORMAT_OPTIONS,
+  getCardCopyLimit,
+  validateDeck,
+  isCommanderFormat
+} from '../services/formatRules';
 
 const {
   activeDeck,
@@ -21,7 +27,9 @@ const {
   saveActiveDeck,
   getShareableDecklist,
   getAvailableQuantityForActiveDeck,
-  canAddCardFromCollection
+  canAddCardFromCollection,
+  setCompanion,
+  clearCompanion
 } = useDecks();
 
 const {
@@ -42,7 +50,74 @@ const filters = ref<CardFilters>({
   maxCost: null
 });
 
-// Collection-only mode belongs to the active deck.
+// Adjustable grid columns: default 6, minimum 3, maximum 6.
+const MIN_COLUMNS = 3;
+const MAX_COLUMNS = 6;
+
+const clampColumns = (value: number): number => {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) return 6;
+
+  return Math.min(
+    MAX_COLUMNS,
+    Math.max(MIN_COLUMNS, Math.round(parsed))
+  );
+};
+
+const getSavedColumns = (key: string): number => {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved === null ? 6 : clampColumns(Number(saved));
+  } catch {
+    return 6;
+  }
+};
+
+const searchColumns = ref(
+  getSavedColumns('mtg_search_columns')
+);
+
+const deckColumns = ref(
+  getSavedColumns('mtg_deck_columns')
+);
+
+const saveColumns = (key: string, value: number) => {
+  try {
+    localStorage.setItem(key, String(clampColumns(value)));
+  } catch (error) {
+    console.error('Could not save grid column setting:', error);
+  }
+};
+
+const changeSearchColumns = (amount: number) => {
+  searchColumns.value = clampColumns(searchColumns.value + amount);
+};
+
+const changeDeckColumns = (amount: number) => {
+  deckColumns.value = clampColumns(deckColumns.value + amount);
+};
+
+const validateSearchColumns = () => {
+  searchColumns.value = clampColumns(searchColumns.value);
+};
+
+const validateDeckColumns = () => {
+  deckColumns.value = clampColumns(deckColumns.value);
+};
+
+watch(
+  searchColumns,
+  (value) => saveColumns('mtg_search_columns', value),
+  { immediate: true }
+);
+
+watch(
+  deckColumns,
+  (value) => saveColumns('mtg_deck_columns', value),
+  { immediate: true }
+);
+
 const collectionOnly = computed({
   get: () => activeDeck.value?.collectionOnly ?? false,
   set: (value: boolean) => {
@@ -58,8 +133,6 @@ const loadCollection = () => {
   collectionEntries.value = StorageService.getCollection();
 };
 
-// Refresh legality information for saved collection cards.
-// Scryfall accepts up to 75 card identifiers per request.
 const refreshCollectionLegality = async () => {
   const entries = collectionEntries.value;
 
@@ -124,7 +197,6 @@ const refreshCollectionLegality = async () => {
       card: updateCard(entry.card)
     }));
 
-    // Also refresh cards already present in the active deck.
     if (activeDeck.value) {
       activeDeck.value.entries.forEach((entry) => {
         entry.card = updateCard(entry.card);
@@ -166,15 +238,12 @@ const showNotification = (
 };
 
 // Format helpers.
-
 const currentFormat = computed<DeckFormat>(
   () => activeDeck.value?.format ?? 'standard'
 );
 
 const getFormatLegality = (card: MtgCard): string => {
-  if (currentFormat.value === 'any') {
-    return 'legal';
-  }
+  if (currentFormat.value === 'any') return 'legal';
 
   return card.legalities?.[currentFormat.value] ?? 'unknown';
 };
@@ -199,15 +268,7 @@ const canHaveAnyNumber = (card: MtgCard): boolean => {
 };
 
 const getDeckCopyLimit = (card: MtgCard): number => {
-  if (
-    currentFormat.value === 'any' ||
-    isBasicLand(card) ||
-    canHaveAnyNumber(card)
-  ) {
-    return 999;
-  }
-
-  return currentFormat.value === 'commander' ? 1 : 4;
+  return getCardCopyLimit(card, currentFormat.value);
 };
 
 const getTotalCopiesByName = (cardName: string): number => {
@@ -229,56 +290,47 @@ const getCopyLimitShortage = (entry: DeckEntry): number => {
 };
 
 // Commander helpers.
-//
-// Important: Scryfall's keywords are stored in MtgCard.tags in this project.
-
 const isBackground = (card: MtgCard): boolean => {
-  return /legendary enchantment.*background/i.test(card.type);
+  return /\blegendary enchantment.*\bbackground\b/i.test(card.type);
 };
 
-const hasKeyword = (card: MtgCard, keyword: string): boolean => {
-  return (card.tags ?? []).some(
-    (item) => item.toLowerCase() === keyword.toLowerCase()
-  );
-};
-
-const isCommanderEligible = (card: MtgCard): boolean => {
-  const type = card.type.toLowerCase();
-  const oracle = (card.oracleText ?? '').toLowerCase();
-
-  if (isBackground(card)) return false;
-
-  if (oracle.includes('can be your commander')) {
-    return true;
-  }
+function hasKeyword(card: MtgCard, keyword: string): boolean {
+  const keywordPattern = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   return (
-    type.includes('legendary') &&
-    type.includes('creature')
+    (card.tags ?? []).some(
+      item => item.toLowerCase() === keyword.toLowerCase()
+    ) ||
+    new RegExp(`\\b${keywordPattern}\\b`, 'i').test(
+      card.oracleText ?? ''
+    )
   );
-};
+}
 
-const isValidSecondCommanderCard = (card: MtgCard): boolean => {
-  return isCommanderEligible(card) || isBackground(card);
-};
-
-const hasPartnerWith = (card: MtgCard, other: MtgCard): boolean => {
-  const oracle = card.oracleText ?? '';
-  const match = oracle.match(/partner with ([^(.\n]+)/i);
+function hasPartnerWith(
+  card: MtgCard,
+  other: MtgCard
+): boolean {
+  const match = (card.oracleText ?? '').match(
+    /partner with\s+([^(.\n]+)/i
+  );
 
   return Boolean(
     match &&
-    match[1].trim().toLowerCase() === other.name.toLowerCase()
+    match[1].trim().toLowerCase() === other.name.trim().toLowerCase()
   );
-};
+}
 
-const canPairCommanders = (
+function isDoctor(card: MtgCard): boolean {
+  return /\bDoctor\b/i.test(card.type);
+}
+
+function canPairCommanders(
   first: MtgCard,
   second: MtgCard
-): boolean => {
+): boolean {
   if (first.id === second.id) return false;
 
-  // Partner.
   if (
     hasKeyword(first, 'Partner') &&
     hasKeyword(second, 'Partner')
@@ -286,7 +338,6 @@ const canPairCommanders = (
     return true;
   }
 
-  // Friends forever.
   if (
     hasKeyword(first, 'Friends forever') &&
     hasKeyword(second, 'Friends forever')
@@ -294,7 +345,6 @@ const canPairCommanders = (
     return true;
   }
 
-  // Partner with a named card.
   if (
     hasPartnerWith(first, second) ||
     hasPartnerWith(second, first)
@@ -302,45 +352,101 @@ const canPairCommanders = (
     return true;
   }
 
-  // Choose a Background.
-  const firstChoosesBackground =
-    hasKeyword(first, 'Choose a Background');
-
-  const secondChoosesBackground =
-    hasKeyword(second, 'Choose a Background');
-
   if (
-    (firstChoosesBackground && isBackground(second)) ||
-    (secondChoosesBackground && isBackground(first))
+    (hasKeyword(first, 'Choose a Background') &&
+      isBackground(second)) ||
+    (hasKeyword(second, 'Choose a Background') &&
+      isBackground(first))
   ) {
     return true;
   }
 
-  // Doctor's companion.
-  const firstHasDoctorCompanion =
-    hasKeyword(first, "Doctor's companion");
-
-  const secondHasDoctorCompanion =
-    hasKeyword(second, "Doctor's companion");
-
-  const firstIsDoctor =
-    /time lord.*doctor|doctor.*time lord/i.test(first.type);
-
-  const secondIsDoctor =
-    /time lord.*doctor|doctor.*time lord/i.test(second.type);
-
   if (
-    (firstHasDoctorCompanion && secondIsDoctor) ||
-    (secondHasDoctorCompanion && firstIsDoctor)
+    (hasKeyword(first, "Doctor's companion") &&
+      isDoctor(second)) ||
+    (hasKeyword(second, "Doctor's companion") &&
+      isDoctor(first))
   ) {
     return true;
   }
 
   return false;
+}
+
+const isCommanderEligible = (card: MtgCard): boolean => {
+  const type = card.type.toLowerCase();
+  const oracle = (card.oracleText ?? '').toLowerCase();
+
+  if (
+    currentFormat.value === 'brawl' ||
+    currentFormat.value === 'historicbrawl' ||
+    currentFormat.value === 'standardbrawl'
+  ) {
+    return (
+      (type.includes('legendary') &&
+        (type.includes('creature') || type.includes('planeswalker'))) ||
+      oracle.includes('can be your commander')
+    );
+  }
+
+  if (currentFormat.value === 'paupercommander') {
+    return type.includes('creature') && card.rarity === 'uncommon';
+  }
+
+  if (isBackground(card)) return false;
+
+  return (
+    oracle.includes('can be your commander') ||
+    (type.includes('legendary') && type.includes('creature'))
+  );
 };
 
-// Only cards already in the deck can be selected as commanders.
-// This prevents selecting a commander that isn't actually in the decklist.
+const isValidSecondCommanderCard = (card: MtgCard): boolean => {
+  return isCommanderEligible(card) || isBackground(card);
+};
+
+const getPairingMechanic = (
+  first: MtgCard,
+  second: MtgCard
+): string => {
+  if (
+    hasKeyword(first, 'Partner') &&
+    hasKeyword(second, 'Partner')
+  ) {
+    return 'Partner';
+  }
+
+  if (
+    hasKeyword(first, 'Friends forever') &&
+    hasKeyword(second, 'Friends forever')
+  ) {
+    return 'Friends forever';
+  }
+
+  if (
+    hasPartnerWith(first, second) ||
+    hasPartnerWith(second, first)
+  ) {
+    return 'Partner with';
+  }
+
+  if (
+    (hasKeyword(first, 'Choose a Background') && isBackground(second)) ||
+    (hasKeyword(second, 'Choose a Background') && isBackground(first))
+  ) {
+    return 'Choose a Background';
+  }
+
+  if (
+    (hasKeyword(first, "Doctor's companion") && isDoctor(second)) ||
+    (hasKeyword(second, "Doctor's companion") && isDoctor(first))
+  ) {
+    return "Doctor's companion";
+  }
+
+  return '';
+};
+
 const commanderCandidates = computed(() => {
   if (!activeDeck.value) return [];
 
@@ -353,6 +459,47 @@ const commanderCandidates = computed(() => {
   });
 
   return [...uniqueCards.values()];
+});
+
+// Companion selection.
+const companionCandidates = computed(() => {
+  if (!activeDeck.value) return [];
+
+  const uniqueCards = new Map<string, MtgCard>();
+
+  activeDeck.value.entries.forEach((entry) => {
+    if (hasKeyword(entry.card, 'Companion')) {
+      uniqueCards.set(entry.card.id, entry.card);
+    }
+  });
+
+  return [...uniqueCards.values()];
+});
+
+const selectedCompanion = computed(
+  () => activeDeck.value?.companionCard ?? null
+);
+
+const selectedCompanionId = computed({
+  get: () => selectedCompanion.value?.id ?? '',
+  set: (value: string) => {
+    if (!value) {
+      clearCompanion();
+      return;
+    }
+
+    const card = companionCandidates.value.find(
+      (candidate) => candidate.id === value
+    );
+
+    if (!card) return;
+
+    const result = setCompanion(card);
+
+    if (!result.success && result.message) {
+      showNotification(result.message, 'error');
+    }
+  }
 });
 
 const selectedCommanderId = computed({
@@ -375,8 +522,6 @@ const selectedCommanderId = computed({
       (entry) => entry.card.id === secondId
     )?.card;
 
-    // Keep the second commander only if the new first commander
-    // can legally pair with it.
     const keepSecond =
       firstCard &&
       secondCard &&
@@ -389,21 +534,15 @@ const selectedCommanderId = computed({
 });
 
 const selectedCommander = computed(() => {
-  if (!activeDeck.value || !selectedCommanderId.value) {
-    return null;
-  }
+  if (!activeDeck.value || !selectedCommanderId.value) return null;
 
   return activeDeck.value.entries.find(
     (entry) => entry.card.id === selectedCommanderId.value
   )?.card ?? null;
 });
 
-// Only show the second selector if the first commander has a pairing
-// mechanic and there is at least one compatible card in the deck.
 const compatibleSecondCommanders = computed(() => {
-  if (!activeDeck.value || !selectedCommander.value) {
-    return [];
-  }
+  if (!activeDeck.value || !selectedCommander.value) return [];
 
   return activeDeck.value.entries
     .map((entry) => entry.card)
@@ -464,6 +603,8 @@ const commanderPairValid = computed(() => {
   const commanders = selectedCommanders.value;
   const ids = activeDeck.value?.commanderIds ?? [];
 
+  if (ids.length === 0) return true;
+
   if (ids.length === 1) {
     return (
       commanders.length === 1 &&
@@ -505,29 +646,33 @@ const hasCommanderIdentityViolation = (card: MtgCard): boolean => {
 };
 
 // Card-level validation.
-
 const getDeckEntryWarnings = (entry: DeckEntry): string[] => {
   const warnings: string[] = [];
 
-  if (currentFormat.value !== 'any') {
-    const legality = getFormatLegality(entry.card);
-    const formatName = currentFormat.value.toUpperCase();
+  if (currentFormat.value === 'any') return warnings;
 
-    if (legality === 'banned') {
-      warnings.push(`BANNED IN ${formatName}`);
-    } else if (legality === 'not_legal') {
-      warnings.push(`NOT LEGAL IN ${formatName}`);
-    }
+  const legality = getFormatLegality(entry.card);
+  const formatName = currentFormat.value.toUpperCase();
 
-    if (getCopyLimitShortage(entry) > 0) {
-      warnings.push(
-        `COPY LIMIT: ${getDeckCopyLimit(entry.card)} MAXIMUM`
-      );
-    }
+  if (legality === 'banned') {
+    warnings.push(`BANNED IN ${formatName}`);
+  } else if (legality === 'not_legal') {
+    warnings.push(`NOT LEGAL IN ${formatName}`);
+  } else if (legality === 'restricted') {
+    warnings.push('RESTRICTED');
+  }
 
-    if (hasCommanderIdentityViolation(entry.card)) {
-      warnings.push('COLOR IDENTITY VIOLATION');
-    }
+  if (getCopyLimitShortage(entry) > 0) {
+    warnings.push(
+      `COPY LIMIT: ${getDeckCopyLimit(entry.card)} MAXIMUM`
+    );
+  }
+
+  if (
+    isCommanderFormat(currentFormat.value) &&
+    hasCommanderIdentityViolation(entry.card)
+  ) {
+    warnings.push('COLOR IDENTITY VIOLATION');
   }
 
   return warnings;
@@ -556,9 +701,7 @@ const normalizeColor = (color: string): string => {
 const matchesLocalFilters = (card: MtgCard): boolean => {
   const query = filters.value.query.trim().toLowerCase();
 
-  if (query && !card.name.toLowerCase().includes(query)) {
-    return false;
-  }
+  if (query && !card.name.toLowerCase().includes(query)) return false;
 
   if (filters.value.color) {
     const cardColor = normalizeColor(card.color);
@@ -567,7 +710,6 @@ const matchesLocalFilters = (card: MtgCard): boolean => {
       if (cardColor !== '') return false;
     } else {
       const selectedColor = [...filters.value.color].sort().join('');
-
       if (cardColor !== selectedColor) return false;
     }
   }
@@ -602,13 +744,10 @@ const displayedCards = computed(() => {
     : cards.value;
 
   return sourceCards.filter((card) => {
-    // Only enforce format legality in Standard and Commander.
     if (currentFormat.value !== 'any') {
       const legality = getFormatLegality(card);
 
-      if (legality === 'banned' || legality === 'not_legal') {
-        return false;
-      }
+      if (legality === 'banned' || legality === 'not_legal') return false;
     }
 
     if (collectionOnly.value) {
@@ -618,9 +757,7 @@ const displayedCards = computed(() => {
 
       const available = getAvailableQuantityForActiveDeck(card.id);
 
-      if (available <= 0 && !alreadyInDeck) {
-        return false;
-      }
+      if (available <= 0 && !alreadyInDeck) return false;
     }
 
     return matchesLocalFilters(card);
@@ -628,85 +765,37 @@ const displayedCards = computed(() => {
 });
 
 // Overall deck validation.
-
-const deckIssues = computed(() => {
-  if (!activeDeck.value) return [];
-
-  const issues: string[] = [];
-
-  // Standard deck size.
-  if (currentFormat.value === 'standard') {
-    if (totalCardCount.value < 60) {
-      issues.push(
-        `Standard requires at least 60 cards. You currently have ${totalCardCount.value}.`
-      );
-    }
+const deckValidation = computed(() => {
+  if (!activeDeck.value) {
+    return {
+      status: 'illegal' as const,
+      issues: [],
+      unknownCards: []
+    };
   }
 
-  // Commander deck size and commander selection.
-  if (currentFormat.value === 'commander') {
-    if (totalCardCount.value !== 100) {
-      issues.push(
-        `Commander requires exactly 100 cards, including your commander. You currently have ${totalCardCount.value}.`
-      );
-    }
-
-    const ids = activeDeck.value.commanderIds ?? [];
-
-    if (ids.length === 0) {
-      issues.push('Select a commander.');
-    } else if (selectedCommanders.value.length !== ids.length) {
-      issues.push('Your selected commander is not present in the deck.');
-    } else if (!commanderPairValid.value) {
-      issues.push(
-        'Your commander selection is not a valid commander or permitted commander pair.'
-      );
-    }
-
-    if (ids.length > 2) {
-      issues.push('A Commander deck can have at most two commanders.');
-    }
-  }
-
-  // Card-specific restrictions only apply to Standard and Commander.
-  // Any mode allows all cards and has no copy limit.
-  if (currentFormat.value !== 'any') {
-    activeDeck.value.entries.forEach((entry) => {
-      const legality = getFormatLegality(entry.card);
-
-      if (legality === 'banned') {
-        issues.push(
-          `${entry.card.name} is banned in ${currentFormat.value}.`
-        );
-      } else if (legality === 'not_legal') {
-        issues.push(
-          `${entry.card.name} is not legal in ${currentFormat.value}.`
-        );
-      }
-
-      const shortage = getCopyLimitShortage(entry);
-
-      if (shortage > 0) {
-        issues.push(
-          `${entry.card.name} exceeds the copy limit by ${shortage}.`
-        );
-      }
-
-      if (hasCommanderIdentityViolation(entry.card)) {
-        issues.push(
-          `${entry.card.name} is outside your commander's color identity.`
-        );
-      }
-    });
-  }
-
-  return [...new Set(issues)];
+  return validateDeck(activeDeck.value);
 });
 
-const deckIsLegal = computed(() => deckIssues.value.length === 0);
+const deckIssues = computed(() => {
+  const result = deckValidation.value;
+
+  const unknownIssues = result.unknownCards.map(
+    (name) => `Legality data is missing for ${name}.`
+  );
+
+  return [...result.issues, ...unknownIssues];
+});
+
+const showDeckIssues = ref(false);
+const showCommanderSettings = ref(false);
+const showCompanionSettings = ref(false);
+
+const deckIsLegal = computed(
+  () => deckValidation.value.status === 'legal'
+);
 
 // Search and filters.
-
 const clearFilters = () => {
   filters.value = {
     query: '',
@@ -732,10 +821,7 @@ onMounted(async () => {
 watch(
   filters,
   (newFilters) => {
-    if (searchTimeout) {
-      clearTimeout(searchTimeout);
-    }
-
+    if (searchTimeout) clearTimeout(searchTimeout);
     if (collectionOnly.value) return;
 
     searchTimeout = setTimeout(() => {
@@ -746,7 +832,6 @@ watch(
 );
 
 // Card actions.
-
 const handleAdd = (card: MtgCard) => {
   const result = addCard(
     card,
@@ -757,6 +842,74 @@ const handleAdd = (card: MtgCard) => {
   if (!result.success && result.message) {
     showNotification(result.message, 'error');
   }
+};
+
+// Manually change the quantity of a card in the deck.
+const handleQuantityChange = (
+  entry: DeckEntry,
+  event: Event
+) => {
+  const input = event.target as HTMLInputElement;
+  const parsed = Number(input.value);
+
+  // Reject empty, invalid, negative, or non-integer values.
+  if (
+    input.value.trim() === '' ||
+    !Number.isFinite(parsed) ||
+    parsed < 0 ||
+    !Number.isInteger(parsed)
+  ) {
+    input.value = String(entry.quantity);
+    return;
+  }
+
+  const targetQuantity = parsed;
+  const currentQuantity = entry.quantity;
+  const cardId = entry.card.id;
+
+  if (targetQuantity === currentQuantity) return;
+
+  // Remove commander/companion references if the card is removed.
+  if (targetQuantity === 0 && activeDeck.value) {
+    activeDeck.value.commanderIds =
+      activeDeck.value.commanderIds.filter(
+        (id) => id !== cardId
+      );
+
+    if (selectedCompanion.value?.id === cardId) {
+      clearCompanion();
+    }
+  }
+
+  if (targetQuantity > currentQuantity) {
+    // Add copies one at a time, respecting existing restrictions.
+    for (let i = currentQuantity; i < targetQuantity; i++) {
+      const result = addCard(
+        entry.card,
+        collectionOnly.value,
+        getDeckCopyLimit(entry.card)
+      );
+
+      if (!result.success) {
+        if (result.message) {
+          showNotification(result.message, 'error');
+        }
+        break;
+      }
+    }
+  } else {
+    // Remove copies until the requested quantity is reached.
+    for (let i = currentQuantity; i > targetQuantity; i--) {
+      removeCard(cardId);
+    }
+  }
+
+  // Restore the displayed value to the actual deck quantity.
+  const updatedEntry = activeDeck.value?.entries.find(
+    (item) => item.card.id === cardId
+  );
+
+  input.value = String(updatedEntry?.quantity ?? 0);
 };
 
 const getCardInventoryText = (card: MtgCard): string => {
@@ -798,11 +951,26 @@ onUnmounted(() => {
   if (searchTimeout) clearTimeout(searchTimeout);
   if (notificationTimeout) clearTimeout(notificationTimeout);
 });
+
+// Custom format dropdown.
+const formatDropdownOpen = ref(false);
+
+const selectedFormatLabel = computed(() => {
+  return FORMAT_OPTIONS.find(
+    (format) => format.value === currentFormat.value
+  )?.label ?? 'Standard';
+});
+
+const selectFormat = (format: DeckFormat) => {
+  if (!activeDeck.value) return;
+
+  activeDeck.value.format = format;
+  formatDropdownOpen.value = false;
+};
 </script>
 
 <template>
   <div class="screen builder-screen">
-
     <!-- Toast -->
     <div
       v-if="notification.message"
@@ -858,15 +1026,12 @@ onUnmounted(() => {
     </header>
 
     <div class="builder-workspace">
-
       <!-- Card Browser -->
       <div class="pane card-browser">
-
-        <!-- Filters -->
         <div class="filter-bar">
           <input
-            type="text"
             v-model="filters.query"
+            type="text"
             placeholder="Search any MTG card..."
           />
 
@@ -917,8 +1082,8 @@ onUnmounted(() => {
             <label>
               Min MV
               <input
-                type="number"
                 v-model.number="filters.minCost"
+                type="number"
                 min="0"
                 step="1"
               />
@@ -927,8 +1092,8 @@ onUnmounted(() => {
             <label>
               Max MV
               <input
-                type="number"
                 v-model.number="filters.maxCost"
+                type="number"
                 min="0"
                 step="1"
                 placeholder="Any"
@@ -945,7 +1110,41 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <!-- Loading -->
+        <!-- Search grid column control -->
+        <div class="grid-column-control search-column-control">
+          <label for="search-columns">Search cards per row</label>
+
+          <div class="grid-column-input">
+            <button
+              type="button"
+              aria-label="Decrease search cards per row"
+              :disabled="searchColumns <= MIN_COLUMNS"
+              @click="changeSearchColumns(-1)"
+            >
+              −
+            </button>
+
+            <input
+              id="search-columns"
+              v-model.number="searchColumns"
+              type="number"
+              :min="MIN_COLUMNS"
+              :max="MAX_COLUMNS"
+              step="1"
+              @change="validateSearchColumns"
+            />
+
+            <button
+              type="button"
+              aria-label="Increase search cards per row"
+              :disabled="searchColumns >= MAX_COLUMNS"
+              @click="changeSearchColumns(1)"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
         <div
           v-if="!collectionOnly && isLoading"
           class="loading-state"
@@ -953,7 +1152,6 @@ onUnmounted(() => {
           Loading cards from Scryfall...
         </div>
 
-        <!-- Error -->
         <div
           v-else-if="!collectionOnly && error && cards.length === 0"
           class="error-state"
@@ -961,7 +1159,6 @@ onUnmounted(() => {
           {{ error }}
         </div>
 
-        <!-- Empty -->
         <div
           v-else-if="displayedCards.length === 0"
           class="loading-state"
@@ -973,9 +1170,13 @@ onUnmounted(() => {
           }}
         </div>
 
-        <!-- Results -->
         <div v-else class="catalog-results">
-          <div class="catalog-grid">
+          <div
+            class="catalog-grid"
+            :style="{
+              gridTemplateColumns: `repeat(${searchColumns}, minmax(0, 1fr))`
+            }"
+          >
             <div
               v-for="card in displayedCards"
               :key="card.id"
@@ -1016,8 +1217,8 @@ onUnmounted(() => {
                 </span>
 
                 <button
-                  @click="handleAdd(card)"
                   class="primary-btn add-btn"
+                  @click="handleAdd(card)"
                   :disabled="
                     collectionOnly &&
                     !canAddCardFromCollection(
@@ -1049,9 +1250,9 @@ onUnmounted(() => {
 
           <button
             v-if="!collectionOnly && hasMore"
+            class="secondary-btn load-more-btn"
             @click="handleLoadMore"
             :disabled="isLoadingMore"
-            class="secondary-btn load-more-btn"
           >
             {{ isLoadingMore ? 'Loading cards...' : 'Load More Cards' }}
           </button>
@@ -1067,58 +1268,323 @@ onUnmounted(() => {
 
       <!-- Deck Workspace -->
       <div class="pane deck-workspace">
-        <h2>Current Deck</h2>
+        <!-- Deck heading and format dropdown -->
+        
+        <!-- Compact deck controls -->
+        <div class="deck-workspace-header">
+          <div class="deck-header-controls">
+            <div class="format-settings">
+              <label for="deck-format">Format</label>
 
-        <!-- Deck Settings -->
-        <div class="deck-settings">
-        <div class="format-settings">
-            <label for="deck-format">
-            Deck Format
-            </label>
+              <div
+                v-if="activeDeck"
+                class="format-dropdown"
+                :class="{
+                  'format-dropdown--open': formatDropdownOpen
+                }"
+              >
+                <button
+                  id="deck-format"
+                  type="button"
+                  class="format-dropdown__trigger"
+                  :class="{
+                    'format-dropdown__trigger--featured':
+                      FORMAT_OPTIONS.some(
+                        (format) =>
+                          format.value === currentFormat &&
+                          format.featured
+                      )
+                  }"
+                  :aria-expanded="formatDropdownOpen"
+                  aria-haspopup="listbox"
+                  @click="formatDropdownOpen = !formatDropdownOpen"
+                >
+                  <span>{{ selectedFormatLabel }}</span>
+                  <span class="format-dropdown__chevron">▾</span>
+                </button>
 
-            <select
-            id="deck-format"
-            v-if="activeDeck"
-            v-model="activeDeck.format"
+                <div
+                  v-if="formatDropdownOpen"
+                  class="format-dropdown__menu"
+                  role="listbox"
+                  aria-label="Choose deck format"
+                >
+                  <button
+                    v-for="format in FORMAT_OPTIONS"
+                    :key="format.value"
+                    type="button"
+                    role="option"
+                    :aria-selected="currentFormat === format.value"
+                    class="format-dropdown__option"
+                    :class="{
+                      'format-dropdown__option--featured': format.featured,
+                      'format-dropdown__option--active':
+                        currentFormat === format.value
+                    }"
+                    @click="selectFormat(format.value)"
+                  >
+                    <span class="format-dropdown__option-name">
+                      <span
+                        v-if="format.featured"
+                        class="format-dropdown__star"
+                      >
+                        ✦
+                      </span>
+                      {{ format.label }}
+                    </span>
+
+                    <span
+                      v-if="format.popular"
+                      class="format-dropdown__popular"
+                    >
+                      POPULAR
+                    </span>
+
+                    <span
+                      v-if="currentFormat === format.value"
+                      class="format-dropdown__check"
+                    >
+                      ✓
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="collection-mode-bar">
+              <label>
+                <input
+                  v-model="collectionOnly"
+                  type="checkbox"
+                />
+                Use collection for deck
+              </label>
+            </div>
+
+            <div class="grid-column-control deck-column-control">
+              <label for="deck-columns">Cards per row</label>
+
+              <div class="grid-column-input">
+                <button
+                  type="button"
+                  aria-label="Decrease deck cards per row"
+                  :disabled="deckColumns <= MIN_COLUMNS"
+                  @click="changeDeckColumns(-1)"
+                >
+                  −
+                </button>
+
+                <input
+                  id="deck-columns"
+                  v-model.number="deckColumns"
+                  type="number"
+                  :min="MIN_COLUMNS"
+                  :max="MAX_COLUMNS"
+                  step="1"
+                  @change="validateDeckColumns"
+                />
+
+                <button
+                  type="button"
+                  aria-label="Increase deck cards per row"
+                  :disabled="deckColumns >= MAX_COLUMNS"
+                  @click="changeDeckColumns(1)"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+               <!-- Commander and Companion Selection -->
+        <div class="commander-companion-row">
+          <!-- Commander Selection -->
+          <div
+            v-if="isCommanderFormat(currentFormat)"
+            class="commander-settings"
+          >
+            <div class="commander-settings-header">
+              <div>
+                <strong>Commander Selection</strong>
+                <span class="commander-summary">
+                  {{
+                    selectedCommanders.length
+                      ? selectedCommanders.map((card) => card.name).join(' + ')
+                      : 'No commander selected'
+                  }}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                class="commander-toggle"
+                :aria-expanded="showCommanderSettings"
+                @click="showCommanderSettings = !showCommanderSettings"
+              >
+                {{ showCommanderSettings ? 'Collapse ▲' : 'Edit ▼' }}
+              </button>
+            </div>
+
+            <div v-if="showCommanderSettings" class="commander-settings-body">
+              <label for="commander-select">
+                Primary commander
+              </label>
+
+              <select
+                id="commander-select"
+                v-model="selectedCommanderId"
+              >
+                <option value="">-- Select a commander --</option>
+
+                <option
+                  v-for="card in commanderCandidates"
+                  :key="card.id"
+                  :value="card.id"
+                >
+                  {{ card.name }}
+                </option>
+              </select>
+
+              <p
+                v-if="commanderCandidates.length === 0"
+                class="commander-help"
+              >
+                Add an eligible legendary creature to your deck first.
+              </p>
+
+              <div
+                v-if="selectedCommanderId && compatibleSecondCommanders.length > 0"
+                class="second-commander-selection"
+              >
+                <label for="second-commander-select">
+                  Second commander
+                </label>
+
+                <select
+                  id="second-commander-select"
+                  v-model="secondCommanderId"
+                >
+                  <option value="">-- No second commander --</option>
+
+                  <option
+                    v-for="card in compatibleSecondCommanders"
+                    :key="card.id"
+                    :value="card.id"
+                  >
+                    {{ card.name }}
+                  </option>
+                </select>
+
+                <p
+                  v-if="selectedCommander && secondCommanderId"
+                  class="commander-help"
+                >
+                  Pairing mechanic:
+                  {{ getPairingMechanic(
+                    selectedCommander,
+                    selectedCommanders[1]
+                  ) }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Companion Selection -->
+          <div
+            v-if="companionCandidates.length > 0 || selectedCompanion"
+            class="commander-settings companion-settings"
+          >
+            <div class="commander-settings-header">
+              <div>
+                <strong>Companion Selection</strong>
+
+                <span class="commander-summary">
+                  {{ selectedCompanion?.name ?? 'No companion selected' }}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                class="commander-toggle"
+                :aria-expanded="showCompanionSettings"
+                @click.stop="showCompanionSettings = !showCompanionSettings"
+              >
+                {{ showCompanionSettings ? 'Collapse ▲' : 'Edit ▼' }}
+              </button>
+            </div>
+
+            <div
+              v-show="showCompanionSettings"
+              class="commander-settings-body"
             >
-            <option value="standard">Standard</option>
-            <option value="commander">Commander</option>
-            <option value="any">Any</option>
-            </select>
+              <label for="companion-select">
+                Companion
+              </label>
+
+              <select
+                id="companion-select"
+                v-model="selectedCompanionId"
+              >
+                <option value="">-- No companion --</option>
+
+                <option
+                  v-for="card in companionCandidates"
+                  :key="card.id"
+                  :value="card.id"
+                >
+                  {{ card.name }}
+                </option>
+              </select>
+
+              <p class="commander-help">
+                {{
+                  selectedCompanion
+                    ? `${selectedCompanion.name} is selected as your companion.`
+                    : 'Select a companion card already included in your deck.'
+                }}
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div class="collection-mode-bar">
-            <label>
-            <input
-                type="checkbox"
-                v-model="collectionOnly"
-            />
-            Use collection only for this deck
-            </label>
-
-            <span v-if="collectionOnly">
-            Only cards in your collection with available copies are shown.
-            </span>
-        </div>
-        </div>
-
-        <!-- Format Validation -->
+        <!-- Collapsible Format Validation -->
         <div
-          class="deck-validation"
-          :class="deckIsLegal ? 'validation-valid' : 'validation-invalid'"
+          v-if="deckIssues.length > 0"
+          class="deck-validation validation-invalid"
         >
-          <strong>
-            {{ deckIsLegal ? 'Deck passes current checks' : 'Deck has format issues' }}
-          </strong>
+          <div class="deck-validation-header">
+            <strong>
+              {{ deckIssues.length }} format
+              {{ deckIssues.length === 1 ? 'issue' : 'issues' }}
+            </strong>
 
-          <ul v-if="deckIssues.length">
-            <li v-for="issue in deckIssues" :key="issue">
+            <button
+              type="button"
+              class="deck-validation-toggle"
+              :aria-expanded="showDeckIssues"
+              @click="showDeckIssues = !showDeckIssues"
+            >
+              {{ showDeckIssues ? 'Hide issues ▲' : 'Show issues ▼' }}
+            </button>
+          </div>
+
+          <ul v-if="showDeckIssues">
+            <li
+              v-for="(issue, index) in deckIssues"
+              :key="index"
+            >
               {{ issue }}
             </li>
           </ul>
         </div>
 
-        <div class="deck-grid-view">
+        <div
+          class="deck-grid-view"
+          :style="{
+            gridTemplateColumns: `repeat(${deckColumns}, minmax(0, 1fr))`
+          }"
+        >
           <div
             v-if="!activeDeck || activeDeck.entries.length === 0"
             class="empty-deck"
@@ -1133,7 +1599,6 @@ onUnmounted(() => {
             :class="{
               'collection-shortage':
                 collectionOnly && getDeckEntryShortage(entry) > 0,
-
               'format-illegal':
                 getDeckEntryWarnings(entry).length > 0
             }"
@@ -1143,40 +1608,70 @@ onUnmounted(() => {
               :alt="entry.card.name"
             />
 
-            <!-- Format Warnings -->
+            <!-- Both warnings share one vertical stack. -->
             <div
+              v-if="
+                getDeckEntryWarnings(entry).length > 0 ||
+                (collectionOnly && getDeckEntryShortage(entry) > 0)
+              "
+              class="deck-card-warnings"
+            >
+              <div
                 v-if="getDeckEntryWarnings(entry).length > 0"
                 class="deck-format-warning"
+                :class="{
+                  'deck-format-warning--compact': deckColumns >= 5
+                }"
                 :title="getDeckEntryWarnings(entry).join('\n')"
-                >
+              >
                 <span class="format-warning-icon">!</span>
 
-                <span class="format-warning-label">
-                    {{ getDeckEntryWarnings(entry)[0] }}
+                <span
+                  v-if="deckColumns < 5"
+                  class="format-warning-label"
+                >
+                  {{ getDeckEntryWarnings(entry)[0] }}
                 </span>
-            </div>
+              </div>
 
-            <!-- Collection Shortage -->
-            <div
-              v-if="collectionOnly && getDeckEntryShortage(entry) > 0"
-              class="collection-shortage-warning"
-              :title="`You need ${getDeckEntryShortage(entry)} more ${entry.card.name}.`"
-            >
-              <span class="shortage-exclamation">!</span>
-              <span class="shortage-number">
-                −{{ getDeckEntryShortage(entry) }}
-              </span>
+              <div
+                v-if="collectionOnly && getDeckEntryShortage(entry) > 0"
+                class="collection-shortage-warning"
+                :title="`You need ${getDeckEntryShortage(entry)} more ${entry.card.name} in your collection.`"
+              >
+                <span class="shortage-exclamation">!</span>
+
+                <span
+                  v-if="deckColumns < 5"
+                  class="shortage-number"
+                >
+                  {{ getDeckEntryShortage(entry) }} SHORT IN COLLECTION
+                </span>
+              </div>
             </div>
 
             <div class="deck-item-controls">
-              <span>{{ entry.quantity }}x</span>
-
               <div class="qty-buttons">
-                <button @click="removeCard(entry.card.id)">
-                  -
+                <button
+                  type="button"
+                  @click="removeCard(entry.card.id)"
+                  aria-label="Remove one copy"
+                >
+                  −
                 </button>
 
+                <input
+                  class="deck-quantity-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  :value="entry.quantity"
+                  :aria-label="`Quantity of ${entry.card.name}`"
+                  @change="handleQuantityChange(entry, $event)"
+                />
+
                 <button
+                  type="button"
                   @click="handleAdd(entry.card)"
                   :disabled="
                     collectionOnly &&
@@ -1185,15 +1680,7 @@ onUnmounted(() => {
                       getDeckCopyLimit(entry.card)
                     )
                   "
-                  :title="
-                    collectionOnly &&
-                    !canAddCardFromCollection(
-                      entry.card,
-                      getDeckCopyLimit(entry.card)
-                    )
-                      ? 'No more copies available in your collection'
-                      : 'Add one copy'
-                  "
+                  aria-label="Add one copy"
                 >
                   +
                 </button>
@@ -1202,7 +1689,6 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-
     </div>
   </div>
 </template>

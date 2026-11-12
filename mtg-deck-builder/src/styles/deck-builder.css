@@ -1,4 +1,8 @@
 
+/* =========================================
+   Builder layout
+========================================= */
+
 .builder-screen {
   padding: 20px;
   max-width: 1500px;
@@ -60,7 +64,10 @@
   gap: 10px;
 }
 
-/* Main workspace */
+/* =========================================
+   Main workspace
+========================================= */
+
 .builder-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -83,7 +90,10 @@
   box-sizing: border-box;
 }
 
-/* Search and filter layout */
+/* =========================================
+   Search and filters
+========================================= */
+
 .filter-bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(130px, 0.8fr);
@@ -116,7 +126,11 @@
   cursor: pointer;
 }
 
-/* Mana cost filter */
+.clear-filters-btn {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
 .mana-cost-filter {
   grid-column: 1 / -1;
   display: grid;
@@ -138,7 +152,10 @@
   width: 100%;
 }
 
-/* Catalog */
+/* =========================================
+   Card catalog and deck grids
+========================================= */
+
 .catalog-results {
   flex: 1;
   min-height: 0;
@@ -156,7 +173,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   grid-auto-rows: max-content;
   gap: 16px;
   align-content: start;
@@ -184,6 +201,10 @@
   box-sizing: border-box;
 }
 
+.deck-grid-item {
+  position: relative;
+}
+
 .card-item img,
 .deck-grid-item img {
   display: block;
@@ -207,12 +228,100 @@
   text-overflow: ellipsis;
 }
 
+.inventory-count {
+  display: block;
+  margin-top: 4px;
+  color: #9299a5;
+  font-size: 11px;
+}
+
 .add-btn {
   padding: 4px;
   font-size: 0.75rem;
 }
 
-/* Deck controls */
+.add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* =========================================
+   Adjustable grid column controls
+========================================= */
+
+.grid-column-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  background: #181818;
+  border: 1px solid #333;
+  border-radius: 7px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.grid-column-control label {
+  color: #ccc;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.grid-column-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.grid-column-input button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #444;
+  border-radius: 5px;
+  background: #292929;
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.grid-column-input button:hover:not(:disabled) {
+  background: #444;
+  border-color: #777;
+}
+
+.grid-column-input button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.grid-column-input input {
+  width: 48px;
+  height: 30px;
+  padding: 4px;
+  border: 1px solid #444;
+  border-radius: 5px;
+  background: #101010;
+  color: #fff;
+  text-align: center;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.grid-column-input input:focus {
+  outline: 2px solid #c9a64b;
+  outline-offset: 1px;
+}
+
+/* =========================================
+   Deck controls
+========================================= */
+
 .deck-item-controls {
   padding: 6px;
   background: #181818;
@@ -241,7 +350,15 @@
   background: #444;
 }
 
-/* Loading and error messages */
+.qty-buttons button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* =========================================
+   Loading, empty and error states
+========================================= */
+
 .loading-state,
 .empty-deck {
   color: #888;
@@ -257,7 +374,10 @@
   grid-column: 1 / -1;
 }
 
-/* Toast notification */
+/* =========================================
+   Toast notifications
+========================================= */
+
 .toast-notification {
   position: fixed;
   bottom: 24px;
@@ -309,7 +429,10 @@
   }
 }
 
-/* Pagination */
+/* =========================================
+   Pagination
+========================================= */
+
 .load-more-btn {
   flex-shrink: 0;
   align-self: center;
@@ -330,67 +453,10 @@
   padding: 12px;
 }
 
-/* Tablet and smaller screens */
-@media (max-width: 900px) {
-  .builder-screen {
-    height: auto;
-    min-height: 100vh;
-  }
+/* =========================================
+   Collection mode
+========================================= */
 
-  .builder-header {
-    flex-wrap: wrap;
-  }
-
-  .builder-workspace {
-    grid-template-columns: 1fr;
-    overflow: visible;
-  }
-
-  .pane {
-    min-height: 500px;
-  }
-
-  .catalog-grid,
-  .deck-grid-view {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  }
-}
-
-/* Mobile */
-@media (max-width: 500px) {
-  .builder-screen {
-    padding: 10px;
-  }
-
-  .builder-header {
-    padding: 12px;
-  }
-
-  .filter-bar {
-    grid-template-columns: 1fr;
-  }
-
-  .filter-bar > input[type="text"] {
-    grid-column: 1;
-  }
-
-  .mana-cost-filter {
-    grid-column: 1;
-  }
-
-  .catalog-grid,
-  .deck-grid-view {
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-    gap: 10px;
-  }
-}
-
-.clear-filters-btn {
-  grid-column: 1 / -1;
-  width: 100%;
-}
-
-/* Collection mode */
 .collection-mode-bar {
   display: flex;
   flex-wrap: wrap;
@@ -417,28 +483,13 @@
   accent-color: #60a5fa;
 }
 
-.collection-mode-bar span,
-.inventory-count {
+.collection-mode-bar span {
   color: #9299a5;
   font-size: 11px;
 }
 
-.inventory-count {
-  display: block;
-  margin-top: 4px;
-}
-
-.add-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.qty-buttons button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 /* Collection shortage warning */
+
 .deck-grid-item.collection-shortage {
   border: 3px solid #e53935 !important;
   border-radius: 8px;
@@ -446,40 +497,101 @@
   box-sizing: border-box;
 }
 
-.collection-shortage-warning {
+.deck-card-warnings {
   position: absolute;
   top: 8px;
+  left: 8px;
   right: 8px;
-  z-index: 5;
+  z-index: 7;
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.deck-format-warning,
+.collection-shortage-warning {
+  position: static;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
+  justify-content: flex-start;
+  gap: 7px;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
   padding: 5px 8px;
   border-radius: 6px;
   background: #b71c1c;
-  color: #ffffff;
+  border: 1px solid #f87171;
+  color: #fff;
   font-weight: 800;
-  font-size: 14px;
-  line-height: 1;
+  font-size: 11px;
+  line-height: 1.2;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
 }
 
-.shortage-exclamation {
+.shortage-exclamation,
+.format-warning-icon {
   display: inline-flex;
+  flex: 0 0 20px;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: 2px solid #ffffff;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #fff;
   border-radius: 50%;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 900;
+  box-sizing: border-box;
 }
 
 .shortage-number {
-  white-space: nowrap;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
-/* Format selection */
+.format-warning-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.deck-format-warning--compact {
+  display: inline-flex;
+  width: auto;
+  min-width: 0;
+  max-width: max-content;
+  justify-content: center;
+  align-items: center;
+  padding: 5px 8px;
+  box-sizing: border-box;
+}
+
+.deck-format-warning--compact .format-warning-icon {
+  display: inline-flex;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+
+/* =========================================
+   Deck settings
+========================================= */
+
+.deck-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
 .format-settings,
 .commander-settings {
   display: flex;
@@ -488,15 +600,12 @@
   margin-bottom: 14px;
 }
 
-.format-settings select,
-.commander-settings select {
-  padding: 9px;
-  border-radius: 6px;
-  border: 1px solid #555;
-  background: #202020;
-  color: white;
-  width: 100%;
-  box-sizing: border-box;
+.deck-settings .format-settings {
+  margin-bottom: 0;
+}
+
+.deck-settings .collection-mode-bar {
+  margin-bottom: 0;
 }
 
 .commander-settings {
@@ -509,7 +618,177 @@
   margin: 0 0 8px;
 }
 
-/* Illegal and banned cards */
+.commander-settings select {
+  padding: 9px;
+  border-radius: 6px;
+  border: 1px solid #555;
+  background: #202020;
+  color: white;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* =========================================
+   Custom format dropdown
+========================================= */
+
+.format-dropdown {
+  position: relative;
+  width: 100%;
+  max-width: 280px;
+  z-index: 30;
+}
+
+.format-dropdown__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid #444;
+  border-radius: 9px;
+  background: #202020;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.format-dropdown__trigger:hover {
+  border-color: #888;
+}
+
+.format-dropdown__trigger:focus-visible {
+  outline: 2px solid #c9a64b;
+  outline-offset: 2px;
+}
+
+.format-dropdown__trigger--featured {
+  border-color: #c9a64b;
+  background: linear-gradient(
+    120deg,
+    rgba(201, 166, 75, 0.2),
+    rgba(201, 166, 75, 0.06)
+  );
+  color: #f3d887;
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(201, 166, 75, 0.12);
+}
+
+.format-dropdown__chevron {
+  margin-left: 12px;
+  transition: transform 0.2s ease;
+}
+
+.format-dropdown--open .format-dropdown__chevron {
+  transform: rotate(180deg);
+}
+
+.format-dropdown__menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  width: 100%;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid #444;
+  border-radius: 10px;
+  background: #202020;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  box-sizing: border-box;
+}
+
+.format-dropdown__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #eee;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.format-dropdown__option:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.format-dropdown__option:focus-visible {
+  outline: 2px solid #c9a64b;
+  outline-offset: -2px;
+}
+
+.format-dropdown__option--featured {
+  margin: 2px 0;
+  border-color: rgba(201, 166, 75, 0.2);
+  background: linear-gradient(
+    100deg,
+    rgba(201, 166, 75, 0.15),
+    rgba(201, 166, 75, 0.035)
+  );
+  color: #f3d887;
+  font-weight: 700;
+}
+
+.format-dropdown__option--featured:hover {
+  border-color: rgba(229, 197, 110, 0.65);
+  background: linear-gradient(
+    100deg,
+    rgba(201, 166, 75, 0.25),
+    rgba(201, 166, 75, 0.09)
+  );
+}
+
+.format-dropdown__option--active {
+  outline: 1px solid rgba(201, 166, 75, 0.45);
+}
+
+.format-dropdown__option-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.format-dropdown__star {
+  color: #e5c56e;
+  font-size: 1.05em;
+}
+
+.format-dropdown__popular {
+  margin-left: auto;
+  padding: 3px 6px;
+  border: 1px solid rgba(201, 166, 75, 0.4);
+  border-radius: 4px;
+  background: rgba(201, 166, 75, 0.14);
+  color: #e5c56e;
+  font-size: 0.62rem;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+}
+
+.format-dropdown__check {
+  color: #e5c56e;
+  font-weight: 800;
+}
+
+/* =========================================
+   Card legality warnings
+========================================= */
+
 .card-item.format-illegal,
 .deck-grid-item.format-illegal {
   border: 3px solid #e53935 !important;
@@ -537,6 +816,7 @@
 }
 
 /* Deck validation summary */
+
 .deck-validation {
   margin-bottom: 14px;
   padding: 12px;
@@ -561,72 +841,718 @@
   color: #ff7777;
 }
 
-/* Deck settings */
-.deck-settings {
+/* =========================================
+   Tablet and smaller screens
+========================================= */
+
+@media (max-width: 900px) {
+  .builder-screen {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .builder-header {
+    flex-wrap: wrap;
+  }
+
+  .builder-workspace {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .pane {
+    min-height: 500px;
+  }
+}
+
+/* =========================================
+   Mobile
+========================================= */
+
+@media (max-width: 500px) {
+  .builder-screen {
+    padding: 10px;
+  }
+
+  .builder-header {
+    padding: 12px;
+  }
+
+  .filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-bar > input[type="text"] {
+    grid-column: 1;
+  }
+
+  .mana-cost-filter {
+    grid-column: 1;
+  }
+
+  .catalog-grid,
+  .deck-grid-view {
+    gap: 10px;
+  }
+
+  .format-dropdown {
+    max-width: 100%;
+  }
+
+  .toast-notification {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+  }
+
+  .grid-column-control {
+    padding: 8px;
+  }
+}
+
+/* =========================================
+   Deck validation controls
+========================================= */
+
+.deck-validation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.deck-validation-toggle {
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.deck-validation-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.deck-validation ul {
+  margin: 12px 0 0;
+  padding-left: 20px;
+}
+
+.deck-validation li + li {
+  margin-top: 6px;
+}
+
+/* =========================================
+   Compact Commander selection
+========================================= */
+
+.commander-settings {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 8px;
+  background: var(--panel-background, rgba(255, 255, 255, 0.03));
+}
+
+.commander-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.commander-settings-header > div {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 3px;
+  min-width: 0;
+}
+
+.commander-summary {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commander-toggle {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.commander-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.commander-settings-body select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color, #555);
+  border-radius: 6px;
+  background: var(--input-background, #222);
+  color: inherit;
+}
+
+.commander-settings-body label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.commander-help {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.second-commander-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.selected-commanders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* =========================================
+   Deck workspace heading and format dropdown
+========================================= */
+
+.deck-workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
   margin-bottom: 15px;
+  flex-shrink: 0;
 }
 
-.deck-settings .format-settings {
-  margin-bottom: 0;
+.deck-workspace-header h2 {
+  margin: 0;
+  flex-shrink: 0;
 }
 
-.deck-settings .collection-mode-bar {
-  margin-bottom: 0;
+.deck-workspace-header .format-settings {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 0 auto;
 }
 
-/* Deck format warning badge */
-.deck-grid-item {
-  position: relative;
+.deck-workspace-header .format-settings label {
+  color: #aaa;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
-.deck-format-warning {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  right: 8px;
-  z-index: 6;
+.deck-workspace-header .format-dropdown {
+  width: 190px;
+  max-width: 190px;
+}
 
+@media (max-width: 600px) {
+  .deck-workspace-header {
+    flex-wrap: wrap;
+  }
+
+  .deck-workspace-header .format-settings {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .deck-workspace-header .format-dropdown {
+    flex: 1;
+    width: auto;
+    max-width: none;
+  }
+}
+
+/* =========================================
+   Scroll the entire deck workspace
+========================================= */
+
+.deck-workspace {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.deck-workspace-header,
+.deck-settings,
+.commander-settings,
+.deck-validation,
+.deck-column-control {
+  position: static;
+  flex-shrink: 0;
+}
+
+/* Deck grid expands naturally inside workspace */
+.deck-grid-view {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
+}
+
+/* On smaller screens, let the whole page scroll */
+@media (max-width: 900px) {
+  .deck-workspace {
+    overflow: visible;
+  }
+
+  .deck-grid-view {
+    overflow: visible;
+  }
+}
+
+/* Deck cards-per-row control */
+.deck-header-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.deck-header-controls .grid-column-control {
   display: flex;
   align-items: center;
   gap: 7px;
+  padding: 6px 10px;
+  background: #292929;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #eee;
+  white-space: nowrap;
+}
 
-  padding: 7px 9px;
-  border-radius: 7px;
+.deck-header-controls .grid-column-control label {
+  font-size: 13px;
+  color: #ccc;
+  margin-right: 4px;
+}
 
-  background: linear-gradient(135deg, #991b1b, #dc2626);
-  border: 1px solid #f87171;
+.deck-header-controls .grid-column-control button {
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: #3a3a3a;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
 
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 900;
-  line-height: 1.2;
-  letter-spacing: 0.35px;
+.deck-header-controls .grid-column-control button:hover:not(:disabled) {
+  background: #505050;
+}
 
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
+.deck-header-controls .grid-column-control button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.deck-header-controls .grid-column-control input {
+  width: 42px;
+  height: 27px;
+  padding: 2px 4px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: #1e1e1e;
+  color: #fff;
+  text-align: center;
+  font-size: 14px;
   box-sizing: border-box;
 }
 
-.format-warning-icon {
-  flex-shrink: 0;
-
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  width: 20px;
-  height: 20px;
-
-  border: 2px solid #ffffff;
-  border-radius: 50%;
-
-  font-size: 14px;
-  font-weight: 900;
+.deck-header-controls .grid-column-control input::-webkit-inner-spin-button,
+.deck-header-controls .grid-column-control input::-webkit-outer-spin-button {
+  opacity: 1;
 }
 
-.format-warning-label {
+.deck-grid-view {
+  grid-template-columns: repeat(var(--grid-columns, 5), minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .deck-header-controls {
+    justify-content: flex-start;
+    width: 100%;
+  }
+}
+
+@media (max-width: 500px) {
+  .deck-header-controls {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .deck-header-controls .grid-column-control {
+    max-width: 100%;
+  }
+}
+
+/* Deck cards-per-row number input */
+.deck-header-controls .grid-column-control input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+  display: inline-block;
+  width: 48px;
+  min-width: 48px;
+  height: 32px;
+  margin: 0;
+  padding: 4px 6px;
+  box-sizing: border-box;
+
+  background-color: #171717;
+  color: #ffffff;
+  border: 1px solid #666;
+  border-radius: 5px;
+
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  outline: none;
+}
+
+.deck-header-controls .grid-column-control input[type="number"]:focus {
+  border-color: #d4af37;
+  box-shadow: 0 0 0 2px rgb(212 175 55 / 20%);
+}
+
+.deck-header-controls .grid-column-control input[type="number"]::-webkit-inner-spin-button,
+.deck-header-controls .grid-column-control input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: inner-spin-button;
+  opacity: 1;
+  cursor: pointer;
+}
+
+/* FORCE REMOVE NUMBER INPUT ARROWS */
+.deck-header-controls input[type="number"],
+.grid-column-control input[type="number"] {
+  -webkit-appearance: none !important;
+  -moz-appearance: textfield !important;
+  appearance: none !important;
+}
+
+/* Chrome, Edge, Safari */
+.deck-header-controls input[type="number"]::-webkit-inner-spin-button,
+.deck-header-controls input[type="number"]::-webkit-outer-spin-button,
+.grid-column-control input[type="number"]::-webkit-inner-spin-button,
+.grid-column-control input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Firefox */
+.deck-header-controls input[type="number"],
+.grid-column-control input[type="number"] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
+}
+
+/* =========================================
+   Center quantity controls beneath each deck card
+========================================= */
+
+.deck-item-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.qty-buttons {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(2px, 0.5vw, 6px);
+  width: 100%;
   min-width: 0;
-  overflow-wrap: anywhere;
+  box-sizing: border-box;
+}
+
+.qty-buttons button {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.deck-quantity-input {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+  max-width: 3.5rem;
+  box-sizing: border-box;
+  padding: 4px 2px;
+  text-align: center;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--border-color, #666);
+  border-radius: 4px;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.deck-quantity-input::-webkit-inner-spin-button,
+.deck-quantity-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+
+/* =========================================
+   Compact deck header controls
+========================================= */
+
+.deck-workspace-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.deck-header-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.deck-header-controls .format-settings {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+.deck-header-controls .format-settings > label {
+  color: #aaa;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.deck-header-controls .format-dropdown {
+  width: 165px;
+  max-width: 165px;
+}
+
+.deck-header-controls .format-dropdown__trigger {
+  padding: 8px 10px;
+}
+
+/* Compact collection checkbox */
+
+.deck-header-controls .collection-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  white-space: nowrap;
+}
+
+.deck-header-controls .collection-mode-bar label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #eee;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+/* Compact cards-per-row control */
+
+.deck-header-controls .grid-column-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 9px;
+  background: #292929;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #eee;
+  white-space: nowrap;
+}
+
+.deck-header-controls .grid-column-control label {
+  color: #ccc;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.deck-header-controls .grid-column-input {
+  gap: 4px;
+}
+
+.deck-header-controls .grid-column-control button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: #3a3a3a;
+  color: #fff;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.deck-header-controls .grid-column-control button:hover:not(:disabled) {
+  background: #505050;
+}
+
+.deck-header-controls .grid-column-control button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.deck-header-controls .grid-column-control input[type="number"] {
+  width: 38px;
+  min-width: 38px;
+  height: 26px;
+  margin: 0;
+  padding: 2px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: #1e1e1e;
+  color: #fff;
+  text-align: center;
+  font-size: 14px;
+  box-sizing: border-box;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.deck-header-controls .grid-column-control input::-webkit-inner-spin-button,
+.deck-header-controls .grid-column-control input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+/* Responsive layout */
+
+@media (max-width: 700px) {
+  .deck-header-controls {
+    justify-content: flex-start;
+    gap: 10px;
+  }
+
+  .deck-header-controls .format-settings {
+    flex: 1 1 100%;
+  }
+
+  .deck-header-controls .format-dropdown {
+    flex: 1;
+    width: auto;
+    max-width: none;
+  }
+}
+
+@media (max-width: 500px) {
+  .deck-header-controls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .deck-header-controls .format-settings,
+  .deck-header-controls .collection-mode-bar,
+  .deck-header-controls .grid-column-control {
+    width: 100%;
+  }
+
+  .deck-header-controls .collection-mode-bar {
+    justify-content: flex-start;
+  }
+}
+
+.deck-header-controls .collection-mode-bar input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #d6a84b;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.deck-header-controls .collection-mode-bar label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #eee;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.commander-companion-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.commander-companion-row > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  .commander-companion-row {
+    flex-direction: column;
+  }
+
+  .commander-companion-row > * {
+    width: 100%;
+    flex: 1 1 auto;
+  }
 }

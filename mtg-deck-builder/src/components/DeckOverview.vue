@@ -2,7 +2,8 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
 import { useDecks } from '../composables/UseDecks';
-import type { Deck, DeckFormat, MtgCard, DeckEntry } from '../types/mtg';
+import type { Deck, DeckValidation } from '../services/formatRules';
+import { validateDeck } from '../services/formatRules';
 
 const emit = defineEmits<{
   openCollection: [];
@@ -41,297 +42,62 @@ const totalCardCountForDeck = (deck: Deck): number => {
   );
 };
 
-type DeckStatus = 'legal' | 'illegal' | 'incomplete';
-
-interface DeckValidation {
-  status: DeckStatus;
-  issues: string[];
-  unknownCards: string[];
-}
-
-const getDeckCopyLimit = (
-  card: MtgCard,
-  format: DeckFormat
-): number => {
-  if (
-    format === 'any' ||
-    /\bBasic\b/i.test(card.type) ||
-    /a deck can have any number of cards named/i.test(
-      card.oracleText ?? ''
-    )
-  ) {
-    return 999;
-  }
-
-  return format === 'commander' ? 1 : 4;
-};
-
-const getCopyLimitShortage = (
-  deck: Deck,
-  entry: DeckEntry
-): number => {
-  const limit = getDeckCopyLimit(entry.card, deck.format ?? 'standard');
-
-  const totalCopies = deck.entries
-    .filter(
-      (item) =>
-        item.card.name.toLowerCase() ===
-        entry.card.name.toLowerCase()
-    )
-    .reduce((total, item) => total + item.quantity, 0);
-
-  return Math.max(0, totalCopies - limit);
-};
-
-// Commander validation helpers. These mirror DeckBuilder.vue.
-
-const isBackground = (card: MtgCard): boolean => {
-  return /legendary enchantment.*background/i.test(card.type);
-};
-
-const hasKeyword = (card: MtgCard, keyword: string): boolean => {
-  return (card.tags ?? []).some(
-    (item) => item.toLowerCase() === keyword.toLowerCase()
-  );
-};
-
-const isCommanderEligible = (card: MtgCard): boolean => {
-  const type = card.type.toLowerCase();
-  const oracle = (card.oracleText ?? '').toLowerCase();
-
-  if (isBackground(card)) return false;
-
-  if (oracle.includes('can be your commander')) {
-    return true;
-  }
-
-  return type.includes('legendary') && type.includes('creature');
-};
-
-const isValidSecondCommanderCard = (card: MtgCard): boolean => {
-  return isCommanderEligible(card) || isBackground(card);
-};
-
-const hasPartnerWith = (card: MtgCard, other: MtgCard): boolean => {
-  const match = (card.oracleText ?? '').match(
-    /partner with ([^(.\n]+)/i
-  );
-
-  return Boolean(
-    match &&
-    match[1].trim().toLowerCase() === other.name.toLowerCase()
-  );
-};
-
-const canPairCommanders = (
-  first: MtgCard,
-  second: MtgCard
-): boolean => {
-  if (first.id === second.id) return false;
-
-  if (
-    hasKeyword(first, 'Partner') &&
-    hasKeyword(second, 'Partner')
-  ) {
-    return true;
-  }
-
-  if (
-    hasKeyword(first, 'Friends forever') &&
-    hasKeyword(second, 'Friends forever')
-  ) {
-    return true;
-  }
-
-  if (
-    hasPartnerWith(first, second) ||
-    hasPartnerWith(second, first)
-  ) {
-    return true;
-  }
-
-  const firstChoosesBackground =
-    hasKeyword(first, 'Choose a Background');
-
-  const secondChoosesBackground =
-    hasKeyword(second, 'Choose a Background');
-
-  if (
-    (firstChoosesBackground && isBackground(second)) ||
-    (secondChoosesBackground && isBackground(first))
-  ) {
-    return true;
-  }
-
-  const firstHasDoctorCompanion =
-    hasKeyword(first, "Doctor's companion");
-
-  const secondHasDoctorCompanion =
-    hasKeyword(second, "Doctor's companion");
-
-  const firstIsDoctor =
-    /time lord.*doctor|doctor.*time lord/i.test(first.type);
-
-  const secondIsDoctor =
-    /time lord.*doctor|doctor.*time lord/i.test(second.type);
-
-  if (
-    (firstHasDoctorCompanion && secondIsDoctor) ||
-    (secondHasDoctorCompanion && firstIsDoctor)
-  ) {
-    return true;
-  }
-
-  return false;
-};
-
-const hasCommanderIdentityViolation = (
-  card: MtgCard,
-  commanders: MtgCard[]
-): boolean => {
-  if (commanders.length === 0) return false;
-
-  const identity = new Set<string>();
-
-  commanders.forEach((commander) => {
-    (commander.colorIdentity ?? []).forEach((color) => {
-      identity.add(color);
-    });
-  });
-
-  return (card.colorIdentity ?? []).some(
-    (color) => !identity.has(color)
-  );
-};
-
-const getDeckValidation = (deck: Deck): DeckValidation => {
-  const format = deck.format ?? 'standard';
-  const issues: string[] = [];
-  const unknownCards: string[] = [];
-  const totalCards = totalCardCountForDeck(deck);
-
-  if (format === 'any') {
-    return {
-      status: 'legal',
-      issues,
-      unknownCards
-    };
-  }
-
-  if (format === 'standard' && totalCards < 60) {
-    issues.push(
-      `Standard requires at least 60 cards. This deck has ${totalCards}.`
+// Commander decks display only their selected commander(s).
+const getDeckPreviewEntries = (deck: Deck) => {
+  if (deck.format === 'commander') {
+    const commanderEntries = deck.entries.filter((entry) =>
+      deck.commanderIds?.includes(entry.card.id)
     );
-  }
 
-  let selectedCommanders: MtgCard[] = [];
-
-  if (format === 'commander') {
-    if (totalCards !== 100) {
-      issues.push(
-        `Commander requires exactly 100 cards. This deck has ${totalCards}.`
-      );
-    }
-
-    const ids = deck.commanderIds ?? [];
-
-    selectedCommanders = ids
-      .map((id) =>
-        deck.entries.find((entry) => entry.card.id === id)?.card
-      )
-      .filter((card): card is MtgCard => Boolean(card));
-
-    if (ids.length === 0) {
-      issues.push('Select a commander.');
-    } else if (selectedCommanders.length !== ids.length) {
-      issues.push('Your selected commander is not present in the deck.');
-    } else if (ids.length === 1) {
-      if (!isCommanderEligible(selectedCommanders[0])) {
-        issues.push(
-          'Your selected card is not a valid commander.'
-        );
-      }
-    } else if (ids.length === 2) {
-      const [first, second] = selectedCommanders;
-
-      if (
-        !isCommanderEligible(first) ||
-        !isValidSecondCommanderCard(second) ||
-        !canPairCommanders(first, second)
-      ) {
-        issues.push(
-          'Your commander selection is not a valid commander or permitted commander pair.'
-        );
-      }
-    } else {
-      issues.push(
-        'Your commander selection is not a valid commander or permitted commander pair.'
-      );
-    }
-
-    if (ids.length > 2) {
-      issues.push('A Commander deck can have at most two commanders.');
-    }
-  }
-
-  deck.entries.forEach((entry) => {
-    const legality = entry.card.legalities?.[format] ?? 'unknown';
-
-    if (legality === 'banned') {
-      issues.push(
-        `${entry.card.name} is banned in ${format}.`
-      );
-    } else if (legality === 'not_legal') {
-      issues.push(
-        `${entry.card.name} is not legal in ${format}.`
-      );
-    } else if (legality === 'unknown') {
-      unknownCards.push(entry.card.name);
-    }
-
-    const shortage = getCopyLimitShortage(deck, entry);
-
-    if (shortage > 0) {
-      issues.push(
-        `${entry.card.name} exceeds the copy limit by ${shortage}.`
-      );
-    }
+    const previewEntries = [...commanderEntries];
 
     if (
-      format === 'commander' &&
-      hasCommanderIdentityViolation(entry.card, selectedCommanders)
+      deck.companionCard &&
+      !previewEntries.some(
+        (entry) => entry.card.id === deck.companionCard!.id
+      )
     ) {
-      issues.push(
-        `${entry.card.name} is outside your commander's color identity.`
-      );
+      previewEntries.push({
+        card: deck.companionCard,
+        quantity: 1
+      });
     }
-  });
 
-  const uniqueIssues = [...new Set(issues)];
-  const uniqueUnknownCards = [...new Set(unknownCards)];
-
-  let status: DeckStatus = 'legal';
-
-  if (uniqueIssues.length > 0) {
-    status = 'illegal';
-  } else if (uniqueUnknownCards.length > 0) {
-    status = 'incomplete';
+    if (previewEntries.length > 0) {
+      return previewEntries;
+    }
   }
 
-  return {
-    status,
-    issues: uniqueIssues,
-    unknownCards: uniqueUnknownCards
-  };
+  return deck.entries;
+};
+
+type DeckStatus = DeckValidation['status'];
+
+const getDeckValidation = (deck: Deck): DeckValidation => {
+  return validateDeck(deck);
+};
+
+// Include both format-rule issues and cards with missing legality data.
+const getDeckIssues = (deck: Deck): string[] => {
+  const validation = getDeckValidation(deck);
+
+  const unknownIssues = validation.unknownCards.map(
+    (name) => `Legality data is missing for ${name}.`
+  );
+
+  return [
+    ...validation.issues,
+    ...unknownIssues
+  ];
 };
 
 const getFormatName = (deck: Deck): string => {
   const format = deck.format ?? 'standard';
 
-  if (format === 'any') return 'Any';
+  if (format === 'any') return 'Unrestricted';
   if (format === 'commander') return 'Commander';
 
-  return 'Standard';
+  return format.charAt(0).toUpperCase() + format.slice(1);
 };
 
 const getStatusLabel = (status: DeckStatus): string => {
@@ -342,17 +108,7 @@ const getStatusLabel = (status: DeckStatus): string => {
 };
 
 const getStatusDescription = (deck: Deck): string => {
-  const validation = getDeckValidation(deck);
-
-  if (validation.status === 'illegal') {
-    return validation.issues.join('\n');
-  }
-
-  if (validation.status === 'incomplete') {
-    return `Legality data is missing for: ${validation.unknownCards.join(', ')}`;
-  }
-
-  return 'This deck passes the current format checks.';
+  return getDeckIssues(deck).join('\n');
 };
 </script>
 
@@ -402,12 +158,12 @@ const getStatusDescription = (deck: Deck): string => {
       >
         <div class="deck-preview">
           <div
-            v-if="deck.entries.length > 0"
+            v-if="getDeckPreviewEntries(deck).length > 0"
             class="deck-artwork"
-            :class="`card-count-${Math.min(deck.entries.length, 4)}`"
+            :class="`card-count-${Math.min(getDeckPreviewEntries(deck).length, 4)}`"
           >
             <div
-              v-for="(entry, index) in deck.entries.slice(0, 4)"
+              v-for="(entry, index) in getDeckPreviewEntries(deck).slice(0, 4)"
               :key="entry.card.id"
               class="preview-card"
               :class="`preview-card-${index + 1}`"
@@ -460,22 +216,12 @@ const getStatusDescription = (deck: Deck): string => {
           </p>
 
           <div
-            v-if="getDeckValidation(deck).issues.length > 0"
+            v-if="getDeckIssues(deck).length > 0"
             class="deck-validation-details"
-            :title="getDeckValidation(deck).issues.join('\n')"
-          >
-            {{ getDeckValidation(deck).issues.length }}
-            format issue(s)
-          </div>
-
-          <div
-            v-else-if="getDeckValidation(deck).unknownCards.length > 0"
-            class="deck-validation-details incomplete-details"
             :title="getStatusDescription(deck)"
           >
-            Missing legality data for
-            {{ getDeckValidation(deck).unknownCards.length }}
-            card(s)
+            {{ getDeckIssues(deck).length }}
+            validation issue(s)
           </div>
 
           <div class="deck-card-actions">

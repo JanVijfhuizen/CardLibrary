@@ -12,10 +12,9 @@ let nextPageUrl: string | null = null;
 let activeController: AbortController | null = null;
 let requestId = 0;
 
+
 function parseCard(card: any): MtgCard {
-  const faces = Array.isArray(card.card_faces)
-    ? card.card_faces
-    : [];
+  const faces = Array.isArray(card.card_faces) ? card.card_faces : [];
 
   const oracleText =
     card.oracle_text ||
@@ -36,7 +35,8 @@ function parseCard(card: any): MtgCard {
     image,
     colorIdentity: card.color_identity || [],
     legalities: card.legalities || {},
-    oracleText
+    oracleText,
+    rarity: card.rarity || ''
   };
 }
 
@@ -117,7 +117,7 @@ export function useScryfallAPI() {
     try {
       const query = buildQuery(filters);
 
-      const url =
+        const url =
         `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=name`;
 
       const response = await fetch(url, {
