@@ -1,0 +1,10 @@
+{
+  "name": "cardlibrary",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix mtg-deck-builder run dev",
+    "build": "npm --prefix mtg-deck-builder run build",
+    "test": "npm --prefix mtg-deck-builder run test",
+    "install:app": "npm install --prefix mtg-deck-builder"
+  }
+}

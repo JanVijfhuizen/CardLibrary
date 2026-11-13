@@ -12,16 +12,50 @@ let nextPageUrl: string | null = null;
 let activeController: AbortController | null = null;
 let requestId = 0;
 
-function parseCard(card: any): MtgCard {
-  const faces = Array.isArray(card.card_faces) ? card.card_faces : [];
+interface ScryfallCardFace {
+  oracle_text?: string;
+  image_uris?: {
+    normal?: string;
+  };
+}
+
+export interface ScryfallCardData {
+  id: string;
+  name: string;
+  type_line?: string;
+  colors?: string[];
+  cmc?: number;
+  keywords?: string[];
+  image_uris?: {
+    normal?: string;
+  };
+  card_faces?: ScryfallCardFace[];
+  color_identity?: string[];
+  legalities?: Record<string, string>;
+  oracle_text?: string;
+  rarity?: string;
+}
+
+interface ScryfallSearchResponse {
+  data?: ScryfallCardData[];
+  has_more?: boolean;
+  next_page?: string | null;
+}
+
+interface ScryfallCollectionResponse extends ScryfallSearchResponse {
+  not_found?: { name?: string }[];
+}
+
+function parseCard(card: ScryfallCardData): MtgCard {
+  const faces = card.card_faces ?? [];
 
   const oracleText =
     card.oracle_text ||
-    faces.map((face: any) => face.oracle_text || '').join('\n');
+    faces.map(face => face.oracle_text || '').join('\n');
 
   const image =
     card.image_uris?.normal ||
-    faces.find((face: any) => face.image_uris?.normal)?.image_uris?.normal ||
+    faces.find(face => face.image_uris?.normal)?.image_uris?.normal ||
     '';
 
   return {
@@ -195,7 +229,7 @@ export async function resolveDecklist(
       throw new Error(`Scryfall API error (${response.status})`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as ScryfallCollectionResponse;
 
     for (const card of data.data ?? []) {
       resolvedCards.set(card.name.toLowerCase(), parseCard(card));
@@ -276,12 +310,12 @@ export function useScryfallAPI() {
         throw new Error(`Scryfall API error (${response.status})`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as ScryfallSearchResponse;
 
       if (currentRequest !== requestId) return;
 
       cards.value = Array.isArray(data.data)
-        ? data.data.map(parseCard).filter((card: MtgCard) => card.image)
+        ? data.data.map(parseCard).filter(card => card.image)
         : [];
 
       hasMore.value = Boolean(data.has_more);
@@ -326,12 +360,12 @@ export function useScryfallAPI() {
         throw new Error(`Scryfall API error (${response.status})`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as ScryfallSearchResponse;
 
       if (currentRequest !== requestId) return;
 
       const newCards: MtgCard[] = Array.isArray(data.data)
-        ? data.data.map(parseCard).filter((card: MtgCard) => card.image)
+        ? data.data.map(parseCard).filter(card => card.image)
         : [];
 
       const existingIds = new Set(cards.value.map(card => card.id));

@@ -1,9 +1,13 @@
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useDecks } from '../composables/UseDecks';
-import type { Deck, DeckValidation } from '../services/formatRules';
-import { validateDeck } from '../services/formatRules';
+import type { Deck } from '../types/mtg';
+import type { DeckValidation } from '../services/formatRules';
+import {
+  getFormatName as getDeckFormatName,
+  validateDeck
+} from '../services/formatRules';
 
 const emit = defineEmits<{
   openCollection: [];
@@ -27,12 +31,6 @@ const handleCreate = () => {
 
 const handleOpen = (deck: Deck) => {
   openDeck(deck);
-};
-
-const handleDelete = (id: string) => {
-  if (confirm('Are you sure you want to delete this deck?')) {
-    deleteDeck(id);
-  }
 };
 
 const totalCardCountForDeck = (deck: Deck): number => {
@@ -73,13 +71,9 @@ const getDeckPreviewEntries = (deck: Deck) => {
 
 type DeckStatus = DeckValidation['status'];
 
-const getDeckValidation = (deck: Deck): DeckValidation => {
-  return validateDeck(deck);
-};
-
 // Include both format-rule issues and cards with missing legality data.
 const getDeckIssues = (deck: Deck): string[] => {
-  const validation = getDeckValidation(deck);
+  const validation = validateDeck(deck);
 
   const unknownIssues = validation.unknownCards.map(
     (name) => `Legality data is missing for ${name}.`
@@ -91,13 +85,8 @@ const getDeckIssues = (deck: Deck): string[] => {
   ];
 };
 
-const getFormatName = (deck: Deck): string => {
-  const format = deck.format ?? 'standard';
-
-  if (format === 'any') return 'Unrestricted';
-  if (format === 'commander') return 'Commander';
-
-  return format.charAt(0).toUpperCase() + format.slice(1);
+const getDeckValidation = (deck: Deck): DeckValidation => {
+  return validateDeck(deck);
 };
 
 const getStatusLabel = (status: DeckStatus): string => {
@@ -109,6 +98,28 @@ const getStatusLabel = (status: DeckStatus): string => {
 
 const getStatusDescription = (deck: Deck): string => {
   return getDeckIssues(deck).join('\n');
+};
+
+const showDeleteDialog = ref(false);
+const deckToDelete = ref<string | null>(null);
+
+const requestDeleteDeck = (deckId: string) => {
+  deckToDelete.value = deckId;
+  showDeleteDialog.value = true;
+};
+
+const cancelDeleteDeck = () => {
+  showDeleteDialog.value = false;
+  deckToDelete.value = null;
+};
+
+const confirmDeleteDeck = () => {
+  if (!deckToDelete.value) return;
+
+  deleteDeck(deckToDelete.value);
+
+  showDeleteDialog.value = false;
+  deckToDelete.value = null;
 };
 </script>
 
@@ -198,7 +209,7 @@ const getStatusDescription = (deck: Deck): string => {
 
           <div class="deck-meta-row">
             <span class="deck-format-label">
-              {{ getFormatName(deck) }}
+              {{ getDeckFormatName(deck.format) }}
             </span>
 
             <span
@@ -233,10 +244,9 @@ const getStatusDescription = (deck: Deck): string => {
             </button>
 
             <button
-              @click="handleDelete(deck.id)"
-              class="danger-btn delete-deck-btn"
-              aria-label="Delete deck"
-              title="Delete deck"
+              type="button"
+              class="delete-deck-btn"
+              @click="requestDeleteDeck(deck.id)"
             >
               Delete
             </button>
@@ -245,6 +255,47 @@ const getStatusDescription = (deck: Deck): string => {
       </article>
     </div>
   </div>
+
+  <Teleport to="body">
+    <div
+      v-if="showDeleteDialog"
+      class="delete-dialog-backdrop"
+      @click.self="cancelDeleteDeck"
+    >
+        <div
+          class="delete-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-dialog-title"
+        >
+          <div class="delete-dialog-icon">!</div>
+
+          <h2 id="delete-dialog-title">Delete this deck?</h2>
+
+          <p>
+            This deck will be permanently removed. This action cannot be undone.
+          </p>
+
+          <div class="delete-dialog-actions">
+            <button
+              type="button"
+              class="delete-dialog-cancel"
+              @click="cancelDeleteDeck"
+            >
+              Keep Deck
+            </button>
+
+            <button
+              type="button"
+              class="delete-dialog-confirm"
+              @click="confirmDeleteDeck"
+            >
+              Delete Deck
+            </button>
+          </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped src="../styles/deck-overview.css"></style>
